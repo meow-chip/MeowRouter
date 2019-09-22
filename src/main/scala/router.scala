@@ -20,7 +20,7 @@ class Router(PORT_NUM: Int) extends Module {
     acceptor.io.dest := DontCare
     acceptor.io.sender := DontCare
     acceptor.io.arp := DontCare
-    acceptor.io.port := DontCare
+    acceptor.io.vlan := DontCare
 
     io.tx.tdata := 0.U
     io.tx.tvalid := acceptor.io.emit

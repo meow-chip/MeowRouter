@@ -14,7 +14,7 @@ class Acceptor(PORT_COUNT: Int) extends Module {
     val dest = Output(new MACAddr)
     val sender = Output(new MACAddr)
     val pactype = Output(PacType())
-    val port = Output(UInt(log2Ceil(PORT_COUNT+1).W)) // Port = 0 should refer to localhost
+    val vlan = Output(UInt(log2Ceil(PORT_COUNT+1).W)) // Port = 0 should refer to localhost
 
     val arp = Output(new ARP(48, 32))
 
@@ -27,15 +27,17 @@ class Acceptor(PORT_COUNT: Int) extends Module {
   // TODO: put payload into ring buffer
   io.sender.addr := header.asUInt >> 48
   io.dest.addr := header.asUInt
-  io.port := header(15)
+  io.vlan := header(15)
   io.pactype := PacType.parse(header.slice(16, 18))
 
-  when(io.rx.tlast) {
-    cnt := 0.U
-  }.elsewhen(io.rx.tvalid) {
-    cnt := cnt +% 1.U
+  when(io.rx.tvalid) {
+    when(io.rx.tlast) {
+      cnt := 0.U
+    } .otherwise {
+      cnt := cnt +% 1.U
+    }
   }
-  
+
   when(io.rx.tvalid) {
     when(cnt < HEADER_LEN.U) {
       header(cnt) := io.rx.tdata
