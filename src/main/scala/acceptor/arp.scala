@@ -16,18 +16,18 @@ class ARPAcceptor extends Module {
   val reading = RegInit(false.B)
 
   when(io.start) {
-    cnt := 0.U
     reading := true.B
-  } .otherwise {
-    when(io.rx.tvalid && reading) {
-      when(cnt < 28.U) {
-        buf(cnt) := io.rx.tdata
-        cnt := cnt +% 1.U
-      }
+  }
 
-      when(cnt === 28.U && (RegNext(cnt) =/= 28.U)) {
-        reading := false.B
-      }
+  when(io.rx.tvalid && (io.start || reading)) {
+    when(cnt < 28.U) {
+      buf(27.U - cnt) := io.rx.tdata
+      cnt := cnt +% 1.U
+    }
+
+    when(cnt === 28.U && (RegNext(cnt) =/= 28.U)) {
+      reading := false.B
+      cnt := 0.U
     }
   }
 

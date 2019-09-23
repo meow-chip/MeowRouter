@@ -9,19 +9,22 @@ class AXIS(val WIDTH: Int) extends Bundle {
   var tlast = Output(Bool())
   var tready = Input(Bool())
 
-  /*
   def split(n: Int) : List[AXIS] = {
-    for(_ <- List(0 to n-1)) {
+    var ready = Wire(Bool())
+    val coll = for(_ <- List(0 to n-1)) yield {
       val y = Wire(new AXIS(WIDTH))
 
       y.tdata := tdata
       y.tvalid := tvalid
       y.tlast := tlast
 
-      tready := y.tlast || tready
+      ready = y.tlast || ready
 
-      yield y
+      y
     }
+
+    tready := ready
+
+    coll
   }
-  */
 }

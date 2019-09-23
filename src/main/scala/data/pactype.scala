@@ -11,9 +11,9 @@ object PacType {
   def parse(v: IndexedSeq[UInt]) : UInt = {
     var result = Wire(PacType.unknown.cloneType)
 
-    when((v(0) === 8.U) && (v(1) === 0.U)) {
+    when((v(1) === 8.U) && (v(0) === 0.U)) {
       result := PacType.ipv4
-    }.elsewhen((v(0) === 8.U) && (v(1) === 6.U)) {
+    }.elsewhen((v(1) === 8.U) && (v(0) === 6.U)) {
       result := PacType.arp
     }.otherwise {
       result := PacType.unknown
