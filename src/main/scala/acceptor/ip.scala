@@ -52,7 +52,7 @@ class IPAcceptor extends Module {
     }
   }
 
-  io.output := (new IP).fromBits(buf.toBits)
+  io.output := buf.asUInt.asTypeOf(io.output)
   io.headerFinished := !header
   io.rx.tready := true.B
 }

@@ -16,6 +16,7 @@ class Top extends Module {
     val tx_tvalid = Output(Bool())
     val tx_tlast = Output(Bool())
     val tx_tready = Input(Bool())
+    val tx_tuser = Output(Bool())
   })
 
   val router = Module(new Router(4))
@@ -32,4 +33,6 @@ class Top extends Module {
   io.tx_tlast := router.io.tx.tlast;
   io.tx_tvalid := router.io.tx.tvalid;
   router.io.tx.tready := io.tx_tready
+
+  io.tx_tuser := false.B
 }

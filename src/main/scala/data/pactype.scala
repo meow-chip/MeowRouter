@@ -21,4 +21,17 @@ object PacType {
 
     result
   }
+
+  def serialize(v: UInt): UInt = {
+    val result = Wire(UInt())
+    when(v === PacType.ipv4) {
+      result := 0x0800.U(16.W)
+    } .elsewhen(v === PacType.arp) {
+      result := 0x0806.U(16.W)
+    } .otherwise {
+      result := 0.U(16.W)
+    }
+
+    result
+  }
 }

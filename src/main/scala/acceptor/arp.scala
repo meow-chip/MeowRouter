@@ -31,7 +31,7 @@ class ARPAcceptor extends Module {
     }
   }
 
-  io.output := (new ARP(48, 32)).fromBits(buf.toBits)
+  io.output := buf.asUInt.asTypeOf(io.output)
   io.finished := !reading
   io.rx.tready := true.B
 }

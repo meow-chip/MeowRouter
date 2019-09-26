@@ -29,8 +29,8 @@ class Encoder(PORT_COUNT: Int) extends Module {
 
   val sending = Reg(new Packet(PORT_COUNT))
   val header = sending.eth.asVec
-  val arpView = sending.arp.toBits
-  val ipView = sending.ip.toBits
+  val arpView = sending.arp.asUInt.asTypeOf(Vec(28, UInt(8.W)))
+  val ipView = sending.ip.asUInt.asTypeOf(Vec(20, UInt(8.W)))
 
   io.ipReader.clk := this.clock
   io.ipReader.en := false.B
@@ -44,7 +44,7 @@ class Encoder(PORT_COUNT: Int) extends Module {
     when(io.status === Status.normal) {
       state := sETH
       sending := io.input
-      cnt := 27.U
+      cnt := 17.U
     }
   } .elsewhen(state === sETH) {
     // Sending ETH packet
@@ -66,7 +66,7 @@ class Encoder(PORT_COUNT: Int) extends Module {
     }
   } .elsewhen(state === sARP) {
     io.writer.data.data := arpView(cnt)
-    io.writer.data.last := cnt =/= 0.U
+    io.writer.data.last := cnt === 0.U
     io.writer.en := true.B
 
     when(!io.writer.full) {
@@ -78,7 +78,7 @@ class Encoder(PORT_COUNT: Int) extends Module {
     }
   } .elsewhen(state === sIP) {
     io.writer.data.data := ipView(cnt)
-    io.writer.data.last := cnt =/= 0.U
+    io.writer.data.last := false.B
     io.writer.en := true.B
 
     when(!io.writer.full) {

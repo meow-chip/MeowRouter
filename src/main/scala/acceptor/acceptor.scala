@@ -26,7 +26,7 @@ class Acceptor(PORT_COUNT: Int) extends Module {
   // TODO: put payload into ring buffer
   output.eth.sender := (header.asUInt >> (18 - 12) * 8).asTypeOf(new MACAddr)
   output.eth.dest := (header.asUInt >> (18 - 6) * 8).asTypeOf(new MACAddr)
-  output.eth.vlan := header(12)
+  output.eth.vlan := header(2)
   output.eth.pactype := pactype
 
   when(io.rx.tvalid) {
