@@ -4,13 +4,14 @@ import chisel3.core.StringParam
 import chisel3.core.IntParam
 import chisel3.core.Reset
 
-class InnerBridge(val width: Int) extends BlackBox(Map(
+class InnerBridge(val width: Int, val depth: Int, val countWidth: Int = 16) extends BlackBox(Map(
     "FIFO_MEMORY_TYPE" -> StringParam("distributed"),
-    "FIFO_WRITE_DEPTH" -> IntParam(4),
+    "FIFO_WRITE_DEPTH" -> IntParam(depth),
     "WRITE_DATA_WIDTH" -> IntParam(width),
     "READ_MODE" -> StringParam("fwft"),
     "FIFO_READ_LATENCY" -> IntParam(0),
-    "READ_DATA_WIDTH" -> IntParam(width)
+    "READ_DATA_WIDTH" -> IntParam(countWidth),
+    "WRITE_DATA_WIDTH" -> IntParam(countWidth)
 )) {
     val io = IO(new Bundle {
         val rst = Input(Bool())
@@ -24,7 +25,12 @@ class InnerBridge(val width: Int) extends BlackBox(Map(
         val rd_en = Input(Bool())
         val dout = Output(UInt(width.W))
         val empty = Output(Bool())
+
+        val wr_data_count = Output(UInt(countWidth.W))
+        val rd_data_count = Output(UInt(countWidth.W))
     })
+
+    override def desiredName: String = "XPM_FIFO_ASYNC"
 }
 
 class AsyncReader[+Type <: Data](t: Type) extends Bundle {
@@ -36,16 +42,18 @@ class AsyncReader[+Type <: Data](t: Type) extends Bundle {
     override def cloneType: this.type = new AsyncReader(t).asInstanceOf[this.type]
 }
 
-class AsyncWriter[+Type <: Data](t: Type) extends Bundle {
+class AsyncWriter[+Type <: Data](t: Type, countWidth: Int = 16) extends Bundle {
     val clk = Input(Clock())
     val en = Input(Bool())
     val data = Input(t)
     val full = Output(Bool())
 
-    override def cloneType: this.type = new AsyncWriter(t).asInstanceOf[this.type]
+    val space = Output(UInt(countWidth.W))
+
+    override def cloneType: this.type = new AsyncWriter(t, countWidth).asInstanceOf[this.type]
 }
 
-class AsyncBridge[+Type <: Data](t: Type) extends Module {
+class AsyncBridge[+Type <: Data](t: Type, depth: Int = 4) extends Module {
     val io = IO(new Bundle {
         // Implict reset
         val write = new AsyncWriter(t.cloneType)
@@ -53,7 +61,7 @@ class AsyncBridge[+Type <: Data](t: Type) extends Module {
     })
 
     val width = t.getWidth
-    val inner = Module(new InnerBridge(width))
+    val inner = Module(new InnerBridge(width, depth))
 
     inner.io.rst := this.reset
 
@@ -61,6 +69,7 @@ class AsyncBridge[+Type <: Data](t: Type) extends Module {
     inner.io.wr_en := io.write.en
     inner.io.din := io.write.data.asUInt
     io.write.full := inner.io.full
+    io.write.space := depth.U + inner.io.rd_data_count - inner.io.wr_data_count
 
     inner.io.rd_clk := io.read.clk
     inner.io.rd_en := io.read.en

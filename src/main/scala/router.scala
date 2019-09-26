@@ -24,19 +24,23 @@ class Router(PORT_NUM: Int) extends Module {
 
   val transmitterBridge = Module(new AsyncBridge(new EncoderUnit))
   transmitterBridge.io.write.clk := this.clock
+  transmitterBridge.io.write.space := DontCare
+
+  val ipBridge = Module(new AsyncBridge(new EncoderUnit, 2048))
 
   withClock(io.rx_clk) {
     val acceptor = Module(new Acceptor(PORT_NUM))
 
     acceptor.io.rx <> io.rx
     acceptorBridge.io.write <> acceptor.io.writer
+    ipBridge.io.write <> acceptor.io.ipWriter
   }
 
   val encoder = Module(new Encoder(PORT_NUM))
 
   val packet = acceptorBridge.io.read.data
   val status = Mux(acceptorBridge.io.read.empty, Status.vacant, Status.normal)
-  acceptorBridge.io.read.en := true.B
+  acceptorBridge.io.read.en := !encoder.io.stall
 
   val masked = Wire(new Packet(PORT_NUM))
   masked := packet
@@ -47,6 +51,7 @@ class Router(PORT_NUM: Int) extends Module {
   encoder.io.status := status
   encoder.io.stall := DontCare
   encoder.io.writer <> transmitterBridge.io.write
+  encoder.io.ipReader <> ipBridge.io.read
 
   withClock(io.tx_clk) {
     val transmitter = Module(new Transmitter)

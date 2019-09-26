@@ -4,6 +4,7 @@ import chisel3._;
 import data._;
 import chisel3.util.log2Ceil
 import _root_.util.AsyncWriter
+import encoder.EncoderUnit
 
 class Acceptor(PORT_COUNT: Int) extends Module {
   // Header Length = MAC * 2 + VLAN + EtherType
@@ -13,6 +14,7 @@ class Acceptor(PORT_COUNT: Int) extends Module {
     val rx = Flipped(new AXIS(8))
 
     val writer = Flipped(new AsyncWriter(new Packet(PORT_COUNT)))
+    val ipWriter = Flipped(new AsyncWriter(new EncoderUnit))
   })
 
   val cnt = RegInit(0.asUInt(12.W))
@@ -48,6 +50,8 @@ class Acceptor(PORT_COUNT: Int) extends Module {
   arpAcceptor.io.rx <> arpRx
   ipAcceptor.io.rx <> ipRx
 
+  ipAcceptor.io.payloadWriter <> io.ipWriter
+
   val headerEnd = cnt === HEADER_LEN.U && RegNext(cnt) =/= HEADER_LEN.U
   arpAcceptor.io.start := pactype === PacType.arp && headerEnd
   ipAcceptor.io.start := pactype === PacType.ipv4 && headerEnd
@@ -61,5 +65,7 @@ class Acceptor(PORT_COUNT: Int) extends Module {
   io.writer.en := arpEmit || ipEmit
   io.writer.data := output
   io.writer.full := DontCare
+  io.writer.space := DontCare
+  // TODO: skip body on drop
   io.writer.clk := this.clock
 }
