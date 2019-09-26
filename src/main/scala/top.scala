@@ -5,6 +5,7 @@ class Top extends Module {
     // Clk and rst are implicit
 
     val rx_clk = Input(Clock())
+    val tx_clk = Input(Clock())
 
     val rx_tdata = Input(UInt(8.W))
     val rx_tvalid = Input(Bool())
@@ -20,6 +21,7 @@ class Top extends Module {
   val router = Module(new Router(4))
 
   router.io.rx_clk := io.rx_clk
+  router.io.tx_clk := io.tx_clk
 
   router.io.rx.tdata := io.rx_tdata
   router.io.rx.tvalid := io.rx_tvalid

@@ -4,7 +4,7 @@ import chisel3._;
 import chisel3.util.log2Ceil;
 import chisel3.util.Cat
 
-class Eth(VLAN_COUNT: Int) extends Bundle {
+class Eth(val VLAN_COUNT: Int) extends Bundle {
     val dest = Output(new MACAddr)
     val sender = Output(new MACAddr)
     val pactype = Output(PacType())

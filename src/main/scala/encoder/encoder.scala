@@ -1,40 +1,58 @@
 package encoder
 
 import chisel3._
+import chisel3.util.Enum
 import data._
+import _root_.util.AsyncWriter
+
+class EncoderUnit extends Bundle {
+  val data = UInt(8.W)
+  val last = Bool()
+}
 
 class Encoder(PORT_COUNT: Int) extends Module {
-    val io = IO(new Bundle{
-        val eth = Input(new Eth(PORT_COUNT + 1))
-        val arp = Input(new ARP(48, 32))
-        val ip = Input(new IP)
-        val fire = Input(Bool())
+  val io = IO(new Bundle{
+    val input = Input(new Packet(PORT_COUNT))
+    val status = Input(UInt())
 
-        val tx = new AXIS(8)
-    })
+    val stall = Output(Bool())
+    val writer = Flipped(new AsyncWriter(new EncoderUnit))
+  })
 
-    val writing = RegInit(false.B)
-    val cnt = RegInit(0.U)
+  val writing = RegInit(false.B)
+  val cnt = RegInit(0.U)
 
-    val header = Reg(Vec(28, UInt(8.W)))
+  val sIDLE :: sETH :: sARP :: sIP :: sIPPIPE :: Nil = Enum(5)
+  val state = RegInit(sIDLE)
 
-    io.tx.tvalid := false.B
-    io.tx.tlast := false.B
+  val sending = Reg(new Packet(PORT_COUNT))
+  val header = sending.eth.asVec
 
-    when(io.fire && ~writing) {
-        cnt := 27.U
-        writing := true.B
-        header := io.eth.asVec
-    } .elsewhen(writing) {
-        io.tx.tdata := header(io.tx.tdata)
-        io.tx.tvalid := true.B
+  io.writer.data.last := false.B
+  io.writer.data.data := 0.asUInt.asTypeOf(io.writer.data.data)
+  io.writer.en := false.B
+  io.writer.clk := this.clock
 
-        when(io.tx.tready) {
-            when(cnt > 0.U) {
-                cnt := cnt - 1.U
-            } .otherwise {
-                writing := false.B
-            }
-        }
+  when(state === sIDLE) {
+    when(io.status === Status.normal) {
+      state := sETH
+      sending := io.input
+      cnt := 27.U
+      header := io.input.eth.asVec
     }
+  } .elsewhen(state === sETH) {
+    // Sending ETH packet
+    io.writer.data.data := header(cnt)
+    io.writer.en := true.B
+
+    when(!io.writer.full) {
+      when(cnt > 0.U) {
+        cnt := cnt - 1.U
+      } .otherwise {
+        state := sIDLE
+      }
+    }
+  }
+
+  io.stall := false.B
 }
