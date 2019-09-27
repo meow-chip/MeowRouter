@@ -9,7 +9,19 @@ import data._
 import ch.qos.logback.core.helpers.Transform
 import _root_.util.AsyncBridge
 import transmitter.Transmitter
+import forward.LLFT
 
+/**
+ * The router module
+ * Pipeline:
+ * (Eth & CPU) -> Forward Table Lookup -> ARP Cache Lookup -> TCP Checksum -> Encoder -> (Eth)
+ *                                          |
+ *                                          ---> CPU (Forward table miss, ARP cache miss, or dest === localhost)
+ * 
+ * TCP Checksum stage is intended for NAT packets.
+ * Currently we do not support hardward NAT, so all NAT packets are sent to CPU
+ *   (Which we also dont have at the moment)
+ */
 class Router(PORT_NUM: Int) extends Module {
   val io = IO(new Bundle {
     val rx_clk = Input(Clock())
@@ -36,20 +48,27 @@ class Router(PORT_NUM: Int) extends Module {
     ipBridge.io.write <> acceptor.io.ipWriter
   }
 
+  val ctrl = Module(new Ctrl())
+  acceptorBridge.io.read.en := !ctrl.io.inputWait
+
+  val status = Mux(acceptorBridge.io.read.empty, Status.vacant, Status.normal)
+
+  val forward = Module(new LLFT(PORT_NUM))
+  ctrl.io.forward.stall <> forward.io.stall
+  ctrl.io.forward.pause <> forward.io.pause
+  acceptorBridge.io.read.data <> forward.io.input
+  status <> forward.io.status
+
+  forward.io.output.lookup := DontCare
+
   val encoder = Module(new Encoder(PORT_NUM))
+  ctrl.io.encoder.stall <> encoder.io.stall
+  ctrl.io.encoder.pause <> encoder.io.pause
 
   val packet = acceptorBridge.io.read.data
-  val status = Mux(acceptorBridge.io.read.empty, Status.vacant, Status.normal)
-  acceptorBridge.io.read.en := !encoder.io.stall
 
-  val masked = Wire(new Packet(PORT_NUM))
-  masked := packet
-  masked.eth.dest := packet.eth.sender
-  masked.eth.sender := Consts.LOCAL_MAC
-
-  encoder.io.input := masked
-  encoder.io.status := status
-  encoder.io.stall := DontCare
+  encoder.io.input := forward.io.output.packet
+  encoder.io.status := forward.io.outputStatus
   encoder.io.writer <> transmitterBridge.io.write
   encoder.io.ipReader <> ipBridge.io.read
 

@@ -1,7 +1,7 @@
 package encoder
 
 import chisel3._
-import chisel3.util.Enum
+import chisel3.util._
 import data._
 import _root_.util.AsyncWriter
 import _root_.util.AsyncReader
@@ -17,6 +17,8 @@ class Encoder(PORT_COUNT: Int) extends Module {
     val status = Input(UInt())
 
     val stall = Output(Bool())
+    val pause = Input(Bool())
+
     val writer = Flipped(new AsyncWriter(new EncoderUnit))
     val ipReader = Flipped(new AsyncReader(new EncoderUnit))
   })
@@ -40,62 +42,72 @@ class Encoder(PORT_COUNT: Int) extends Module {
   io.writer.en := false.B
   io.writer.clk := this.clock
 
-  when(state === sIDLE) {
-    when(io.status === Status.normal) {
-      state := sETH
-      sending := io.input
-      cnt := 17.U
-    }
-  } .elsewhen(state === sETH) {
-    // Sending ETH packet
-    io.writer.data.data := header(cnt)
-    io.writer.en := true.B
-
-    when(!io.writer.full) {
-      when(cnt > 0.U) {
-        cnt := cnt - 1.U
-      } .elsewhen(sending.eth.pactype === PacType.arp) {
-        // Is ARP
-        state := sARP
-        cnt := 27.U
-      } .otherwise {
-        // Is IP
-        state := sIP
-        cnt := 19.U
+  switch(state) {
+    is(sIDLE) {
+      when(!io.pause && io.status === Status.normal) {
+        state := sETH
+        sending := io.input
+        cnt := 17.U
       }
     }
-  } .elsewhen(state === sARP) {
-    io.writer.data.data := arpView(cnt)
-    io.writer.data.last := cnt === 0.U
-    io.writer.en := true.B
 
-    when(!io.writer.full) {
-      when(cnt > 0.U) {
-        cnt := cnt - 1.U
-      } .otherwise {
+    is(sETH) {
+      // Sending ETH packet
+      io.writer.data.data := header(cnt)
+      io.writer.en := true.B
+
+      when(!io.writer.full) {
+        when(cnt > 0.U) {
+          cnt := cnt - 1.U
+        } .elsewhen(sending.eth.pactype === PacType.arp) {
+          // Is ARP
+          state := sARP
+          cnt := 27.U
+        } .otherwise {
+          // Is IP
+          state := sIP
+          cnt := 19.U
+        }
+      }
+    }
+
+    is(sARP) {
+      io.writer.data.data := arpView(cnt)
+      io.writer.data.last := cnt === 0.U
+      io.writer.en := true.B
+
+      when(!io.writer.full) {
+        when(cnt > 0.U) {
+          cnt := cnt - 1.U
+        } .otherwise {
+          state := sIDLE
+        }
+      }
+    }
+
+    is(sIP) {
+      io.writer.data.data := ipView(cnt)
+      io.writer.data.last := false.B
+      io.writer.en := true.B
+
+      when(!io.writer.full) {
+        when(cnt > 0.U) {
+          cnt := cnt - 1.U
+        } .otherwise {
+          state := sIPPIPE
+        }
+      }
+    }
+
+    is(sIPPIPE) {
+      io.writer.data := io.ipReader.data
+      val transfer = (!io.ipReader.empty) && (!io.writer.full)
+      io.writer.en := transfer
+      io.ipReader.en := transfer
+
+      when(io.ipReader.data.last && transfer) {
         state := sIDLE
       }
-    }
-  } .elsewhen(state === sIP) {
-    io.writer.data.data := ipView(cnt)
-    io.writer.data.last := false.B
-    io.writer.en := true.B
-
-    when(!io.writer.full) {
-      when(cnt > 0.U) {
-        cnt := cnt - 1.U
-      } .otherwise {
-        state := sIPPIPE
-      }
-    }
-  } .elsewhen(state === sIPPIPE) {
-    io.writer.data := io.ipReader.data
-    val transfer = (!io.ipReader.empty) && (!io.writer.full)
-    io.writer.en := transfer
-    io.ipReader.en := transfer
-
-    when(io.ipReader.data.last && transfer) {
-      state := sIDLE
     }
   }
 
