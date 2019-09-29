@@ -65,8 +65,6 @@ class Router(PORT_NUM: Int) extends Module {
   ctrl.io.arp.pause <> arp.io.pause
   forward.io.output <> arp.io.input
   forward.io.outputStatus <> arp.io.status
-  arp.io.output.arp <> DontCare
-  arp.io.output.forward <> DontCare
 
   val encoder = Module(new Encoder(PORT_NUM))
   ctrl.io.encoder.stall <> encoder.io.stall
@@ -74,7 +72,7 @@ class Router(PORT_NUM: Int) extends Module {
 
   val packet = acceptorBridge.io.read.data
 
-  encoder.io.input := arp.io.output.packet
+  encoder.io.input := arp.io.output
   encoder.io.status := arp.io.outputStatus
   encoder.io.writer <> transmitterBridge.io.write
   encoder.io.ipReader <> ipBridge.io.read
