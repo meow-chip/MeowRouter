@@ -62,8 +62,6 @@ class AsyncBridge[+Type <: Data](t: Type, depth: Int = 16) extends Module {
   })
 
   val width = t.getWidth
-  println("WIDTH:")
-  println(width)
   val inner = Module(new InnerBridge(width, depth))
 
   inner.io.rst := this.reset
