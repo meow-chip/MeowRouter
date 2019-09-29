@@ -10,6 +10,7 @@ import ch.qos.logback.core.helpers.Transform
 import _root_.util.AsyncBridge
 import transmitter.Transmitter
 import forward.LLFT
+import arp.ARPTable
 
 /**
  * The router module
@@ -59,7 +60,13 @@ class Router(PORT_NUM: Int) extends Module {
   acceptorBridge.io.read.data <> forward.io.input
   status <> forward.io.status
 
-  forward.io.output.lookup := DontCare
+  val arp = Module(new ARPTable(PORT_NUM, 8))
+  ctrl.io.arp.stall <> arp.io.stall
+  ctrl.io.arp.pause <> arp.io.pause
+  forward.io.output <> arp.io.input
+  forward.io.outputStatus <> arp.io.status
+  arp.io.output.arp <> DontCare
+  arp.io.output.forward <> DontCare
 
   val encoder = Module(new Encoder(PORT_NUM))
   ctrl.io.encoder.stall <> encoder.io.stall
@@ -67,8 +74,8 @@ class Router(PORT_NUM: Int) extends Module {
 
   val packet = acceptorBridge.io.read.data
 
-  encoder.io.input := forward.io.output.packet
-  encoder.io.status := forward.io.outputStatus
+  encoder.io.input := arp.io.output.packet
+  encoder.io.status := arp.io.outputStatus
   encoder.io.writer <> transmitterBridge.io.write
   encoder.io.ipReader <> ipBridge.io.read
 

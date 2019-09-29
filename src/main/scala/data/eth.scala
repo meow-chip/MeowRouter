@@ -5,14 +5,14 @@ import chisel3.util.log2Ceil;
 import chisel3.util.Cat
 
 class Eth(val VLAN_COUNT: Int) extends Bundle {
-  val dest = Output(new MACAddr)
-  val sender = Output(new MACAddr)
-  val pactype = Output(PacType())
-  val vlan = Output(UInt(log2Ceil(VLAN_COUNT).W))
+  val dest = UInt(48.W)
+  val sender = UInt(48.W)
+  val pactype = PacType()
+  val vlan = UInt(log2Ceil(VLAN_COUNT).W)
 
   def toBits() : UInt = Cat(
-    dest.asUInt,
-    sender.asUInt,
+    dest,
+    sender,
     0x810000.U(24.W),
     vlan.asTypeOf(UInt(8.W)),
     PacType.serialize(pactype)

@@ -20,12 +20,14 @@ class StageStall extends Bundle {
 class Ctrl extends Module {
   val io = IO(new Bundle {
     val forward = new StageStall
+    val arp = new StageStall
     val encoder = new StageStall
     val inputWait = Output(Bool())
   });
 
-  val anyStalled = io.forward.stall || io.encoder.stall
+  val anyStalled = io.forward.stall || io.arp.stall || io.encoder.stall
   io.forward.pause := anyStalled
   io.encoder.pause := anyStalled
+  io.arp.pause := anyStalled
   io.inputWait := anyStalled
 }
