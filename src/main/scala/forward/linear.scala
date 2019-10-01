@@ -44,8 +44,10 @@ class LLFT(PORT_COUNT: Int) extends Module {
   })
 
   private val store = VecInit(Array(
-    Entry(List(10, 0, 1, 3), 32, List(10, 2, 0, 1)),
-    Entry(List(10, 0, 1, 0), 24, List(10, 1, 0, 1))
+    Entry(List(10, 0, 1, 0), 24, List(10, 0, 1, 2)),
+    Entry(List(10, 0, 2, 0), 24, List(10, 0, 2, 2)),
+    Entry(List(10, 0, 3, 0), 24, List(10, 0, 3, 2)),
+    Entry(List(10, 0, 4, 0), 24, List(10, 0, 4, 2))
   ))
 
   val cnt = Reg(UInt(log2Ceil(store.length + 1).W))
@@ -54,10 +56,11 @@ class LLFT(PORT_COUNT: Int) extends Module {
   val working = Reg(new Packet(PORT_COUNT))
   val lookup = Reg(new ForwardLookup)
   val addr = Reg(UInt(32.W))
+  val status = RegInit(Status.vacant)
 
   io.output.packet := working
   io.output.lookup := lookup
-  io.outputStatus := Status.normal // Forward table currently doesn't cause a packet drop
+  io.outputStatus := status
 
   val sIDLE :: sMATCHING :: Nil = Enum(2)
   val state = RegInit(sIDLE)
@@ -66,15 +69,18 @@ class LLFT(PORT_COUNT: Int) extends Module {
 
   switch(state) {
     is(sIDLE) {
-      when(!io.pause && io.status =/= Status.vacant) {
+      when(!io.pause) {
+        status := io.status
         working := io.input
-        when(io.input.eth.pactype === PacType.ipv4) {
-          addr := io.input.ip.dest
-          cnt := 0.U
-          shiftCnt := 32.U
-          state := sMATCHING
-        } .otherwise {
-          lookup.status := ForwardLookup.invalid
+        when(io.status =/= Status.vacant) {
+          when(io.input.eth.pactype === PacType.ipv4) {
+            addr := io.input.ip.dest
+            cnt := 0.U
+            shiftCnt := 32.U
+            state := sMATCHING
+          } .otherwise {
+            lookup.status := ForwardLookup.invalid
+          }
         }
       }
     }

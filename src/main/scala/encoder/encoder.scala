@@ -26,24 +26,18 @@ class Encoder(PORT_COUNT: Int) extends Module {
   })
 
   val MACS = VecInit(Consts.LOCAL_MACS)
+  val IPS = VecInit(Consts.LOCAL_IPS)
 
   val writing = RegInit(false.B)
   val cnt = RegInit(0.U)
 
-  val sIDLE :: sETH :: sARP :: sIP :: sIPPIPE :: sARPMISS :: Nil = Enum(6)
+  val sIDLE :: sETH :: sARP :: sIP :: sIPPIPE :: sARPMISS :: sIPDROP :: Nil = Enum(7)
   val state = RegInit(sIDLE)
 
   val sending = Reg(new ARPOutput(PORT_COUNT))
   val arpView = sending.packet.arp.asUInt.asTypeOf(Vec(28, UInt(8.W)))
   val ipView = sending.packet.ip.asUInt.asTypeOf(Vec(20, UInt(8.W)))
-
-  val header = Wire(new Eth(PORT_COUNT))
-  header.vlan := sending.arp.at
-  header.sender := MACS(sending.arp.at)
-  header.dest := sending.arp.mac
-  header.pactype := sending.packet.eth.pactype
-
-  val headerView = header.asVec
+  val headerView = sending.packet.eth.asVec
 
   io.ipReader.clk := this.clock
   io.ipReader.en := false.B
@@ -56,13 +50,13 @@ class Encoder(PORT_COUNT: Int) extends Module {
   // For ARPMISS
   val arpEth = Wire(new Eth(PORT_COUNT))
   arpEth.pactype := PacType.arp
-  arpEth.dest := (-1).S.asUInt // Broadcast
+  arpEth.dest := (-1).S(48.W).asUInt // Broadcast
 
   val arpReq = Wire(new ARP(48, 32))
   arpReq.htype := ARP.HtypeEth
   arpReq.ptype := ARP.PtypeIPV4
-  arpReq.hlen := 48.U
-  arpReq.plen := 32.U
+  arpReq.hlen := 6.U
+  arpReq.plen := 4.U
   arpReq.oper := ARP.OperRequest
   arpReq.tpa := sending.forward.nextHop
   arpReq.tha := 0.U
@@ -71,9 +65,9 @@ class Encoder(PORT_COUNT: Int) extends Module {
   arpEth.vlan := port
   arpEth.sender := MACS(port)
   arpReq.sha := MACS(port)
-  arpReq.spa := MACS(port)
+  arpReq.spa := IPS(port)
 
-  val arpMissPayload = Cat(arpReq.asUInt(), arpEth.asUInt()).asTypeOf(Vec(18 + 28, UInt(8.W)))
+  val arpMissPayload = Cat(arpEth.toBits(), arpReq.asUInt()).asTypeOf(Vec(18 + 28, UInt(8.W)))
 
   switch(state) {
     is(sIDLE) {
@@ -94,6 +88,7 @@ class Encoder(PORT_COUNT: Int) extends Module {
 
     is(sARPMISS) {
       io.writer.data.data := arpMissPayload(cnt)
+      io.writer.data.last := cnt === 0.U
       io.writer.en := true.B
 
       when(!io.writer.full) {
@@ -103,7 +98,7 @@ class Encoder(PORT_COUNT: Int) extends Module {
           cnt := (18 + 28 -1).U
           port := port + 1.U
         } .otherwise {
-          state := sIDLE
+          state := sIPDROP
         }
       }
     }
@@ -165,6 +160,11 @@ class Encoder(PORT_COUNT: Int) extends Module {
       when(io.ipReader.data.last && transfer) {
         state := sIDLE
       }
+    }
+
+    is(sIPDROP) {
+      io.ipReader.en := true.B
+      when(io.ipReader.data.last) { state := sIDLE }
     }
   }
 
