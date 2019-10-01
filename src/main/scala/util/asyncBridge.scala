@@ -4,15 +4,14 @@ import chisel3.core.StringParam
 import chisel3.core.IntParam
 import chisel3.core.Reset
 
-class InnerBridge(val width: Int, val depth: Int, val countWidth: Int = 16) extends BlackBox(Map(
+class InnerBridge(val width: Int, val depth: Int, val thresh: Int) extends BlackBox(Map(
   "FIFO_MEMORY_TYPE" -> StringParam("distributed"),
   "FIFO_WRITE_DEPTH" -> IntParam(depth),
   "WRITE_DATA_WIDTH" -> IntParam(width),
   "READ_DATA_WIDTH" -> IntParam(width),
   "READ_MODE" -> StringParam("fwft"),
   "FIFO_READ_LATENCY" -> IntParam(0),
-  "RD_DATA_COUNT_WIDTH" -> IntParam(countWidth),
-  "WR_DATA_COUNT_WIDTH" -> IntParam(countWidth)
+  "PROG_FULL_THRESH" -> IntParam(thresh)
 )) {
   val io = IO(new Bundle {
     val rst = Input(Bool())
@@ -27,8 +26,7 @@ class InnerBridge(val width: Int, val depth: Int, val countWidth: Int = 16) exte
     val dout = Output(UInt(width.W))
     val empty = Output(Bool())
 
-    val wr_data_count = Output(UInt(countWidth.W))
-    val rd_data_count = Output(UInt(countWidth.W))
+    val prog_full = Output(Bool())
   })
 
   override def desiredName: String = "xpm_fifo_async"
@@ -43,26 +41,28 @@ class AsyncReader[+Type <: Data](t: Type) extends Bundle {
   override def cloneType: this.type = new AsyncReader(t).asInstanceOf[this.type]
 }
 
-class AsyncWriter[+Type <: Data](t: Type, countWidth: Int = 16) extends Bundle {
+class AsyncWriter[+Type <: Data](t: Type) extends Bundle {
   val clk = Input(Clock())
   val en = Input(Bool())
   val data = Input(t)
   val full = Output(Bool())
 
-  val space = Output(UInt(countWidth.W))
+  val progfull = Output(Bool())
 
-  override def cloneType: this.type = new AsyncWriter(t, countWidth).asInstanceOf[this.type]
+  override def cloneType: this.type = new AsyncWriter(t).asInstanceOf[this.type]
 }
 
-class AsyncBridge[+Type <: Data](t: Type, depth: Int = 16) extends Module {
+class AsyncBridge[+Type <: Data](t: Type, depth: Int = 16, spaceThresh: Int = -1) extends Module {
   val io = IO(new Bundle {
     // Implict reset
     val write = new AsyncWriter(t.cloneType)
     val read = new AsyncReader(t)
   })
 
+  val thresh = if(spaceThresh < 0) { 5 } else { depth - spaceThresh + 1 }
+
   val width = t.getWidth
-  val inner = Module(new InnerBridge(width, depth))
+  val inner = Module(new InnerBridge(width, depth, thresh))
 
   inner.io.rst := this.reset
 
@@ -70,7 +70,7 @@ class AsyncBridge[+Type <: Data](t: Type, depth: Int = 16) extends Module {
   inner.io.wr_en := io.write.en
   inner.io.din := io.write.data.asUInt
   io.write.full := inner.io.full
-  io.write.space := depth.U + inner.io.rd_data_count - inner.io.wr_data_count
+  io.write.progfull := inner.io.prog_full
 
   inner.io.rd_clk := io.read.clk
   inner.io.rd_en := io.read.en

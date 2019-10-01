@@ -58,14 +58,15 @@ class Acceptor(PORT_COUNT: Int) extends Module {
 
   val arpEmit = pactype === PacType.arp && arpAcceptor.io.finished && !RegNext(arpAcceptor.io.finished)
   val ipEmit = pactype === PacType.ipv4 && ipAcceptor.io.headerFinished && !RegNext(ipAcceptor.io.headerFinished)
+  val ipIgnore = pactype === PacType.ipv4 && ipAcceptor.io.ignored
 
   output.ip := ipAcceptor.io.output
   output.arp := arpAcceptor.io.output
 
-  io.writer.en := arpEmit || ipEmit
+  io.writer.en := arpEmit || (ipEmit && !ipIgnore)
   io.writer.data := output
   io.writer.full := DontCare
-  io.writer.space := DontCare
+  io.writer.progfull := DontCare
   // TODO: skip body on drop
   io.writer.clk := this.clock
 }

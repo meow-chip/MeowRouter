@@ -11,6 +11,7 @@ import _root_.util.AsyncBridge
 import transmitter.Transmitter
 import forward.LLFT
 import arp.ARPTable
+import _root_.util.Consts
 
 /**
  * The router module
@@ -37,9 +38,9 @@ class Router(PORT_NUM: Int) extends Module {
 
   val transmitterBridge = Module(new AsyncBridge(new EncoderUnit))
   transmitterBridge.io.write.clk := this.clock
-  transmitterBridge.io.write.space := DontCare
+  transmitterBridge.io.write.progfull := DontCare
 
-  val ipBridge = Module(new AsyncBridge(new EncoderUnit, 2048))
+  val ipBridge = Module(new AsyncBridge(new EncoderUnit, Consts.IP_BUF, Consts.MAX_MTU))
 
   withClock(io.rx_clk) {
     val acceptor = Module(new Acceptor(PORT_NUM))
