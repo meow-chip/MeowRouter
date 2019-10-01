@@ -37,8 +37,8 @@ class ARPTable(PORT_COUNT: Int, SIZE: Int) extends Module {
 
   val storeInit = for(i <- (0 until SIZE)) yield ARPEntry()
 
-  val store = VecInit(storeInit)
-  val ptr = RegInit(0.U(log2Ceil(SIZE)))
+  val store = RegInit(VecInit(storeInit))
+  val ptr = RegInit(0.U(log2Ceil(SIZE).W))
 
   val (found, entry) = store.foldLeft((false.B, 0.U.asTypeOf(new ARPEntry)))((acc, cur) => {
     val found = cur.ip === io.input.lookup.nextHop
