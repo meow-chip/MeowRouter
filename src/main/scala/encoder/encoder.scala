@@ -25,6 +25,8 @@ class Encoder(PORT_COUNT: Int) extends Module {
     val ipReader = Flipped(new AsyncReader(new EncoderUnit))
   })
 
+  val MACS = VecInit(Consts.LOCAL_MACS)
+
   val writing = RegInit(false.B)
   val cnt = RegInit(0.U)
 
@@ -37,7 +39,7 @@ class Encoder(PORT_COUNT: Int) extends Module {
 
   val header = Wire(new Eth(PORT_COUNT))
   header.vlan := sending.arp.at
-  header.sender := Consts.LOCAL_MACS(sending.arp.at)
+  header.sender := MACS(sending.arp.at)
   header.dest := sending.arp.mac
   header.pactype := sending.packet.eth.pactype
 
@@ -67,9 +69,9 @@ class Encoder(PORT_COUNT: Int) extends Module {
 
   val port = RegInit(1.U(log2Ceil(PORT_COUNT+1).W))
   arpEth.vlan := port
-  arpEth.sender := Consts.LOCAL_MACS(port)
-  arpReq.sha := Consts.LOCAL_MACS(port)
-  arpReq.spa := Consts.LOCAL_IPS(port)
+  arpEth.sender := MACS(port)
+  arpReq.sha := MACS(port)
+  arpReq.spa := MACS(port)
 
   val arpMissPayload = Cat(arpReq.asUInt(), arpEth.asUInt()).asTypeOf(Vec(18 + 28, UInt(8.W)))
 
@@ -81,7 +83,9 @@ class Encoder(PORT_COUNT: Int) extends Module {
           state := sARPMISS
           port := 1.U
           cnt := (18 + 28 -1).U
-        }.elsewhen(io.input.packet.eth.pactype =/= PacType.arp || io.input.packet.eth.sender === Consts.LOCAL_MACS(0)) {
+        }.elsewhen(io.input.packet.eth.pactype =/= PacType.arp
+          || io.input.packet.eth.sender === MACS(io.input.packet.eth.vlan)
+        ) {
           state := sETH
           cnt := 17.U
         }
