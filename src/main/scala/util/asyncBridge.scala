@@ -59,7 +59,7 @@ class AsyncBridge[+Type <: Data](t: Type, depth: Int = 16, spaceThresh: Int = -1
     val read = new AsyncReader(t)
   })
 
-  val thresh = if(spaceThresh < 0) { 5 } else { depth - spaceThresh + 1 }
+  val thresh = if(spaceThresh < 0) { 7 } else { depth - spaceThresh + 1 }
 
   val width = t.getWidth
   val inner = Module(new InnerBridge(width, depth, thresh))
