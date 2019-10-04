@@ -4,7 +4,7 @@ import chisel3._;
 
 object ARP {
   val HtypeEth = 0x0001.U(16.W)
-  val PtypeIPV4 = 0x0080.U(16.W)
+  val PtypeIPV4 = 0x0800.U(16.W)
 
   val OperRequest = 0x0001.asUInt(16.W)
   val OperReply = 0x0002.asUInt(16.W)
