@@ -3,12 +3,13 @@ package acceptor;
 import chisel3._;
 import data._;
 import chisel3.util.log2Ceil
-import _root_.util.AsyncWriter
+import _root_.util._
 import encoder.EncoderUnit
 
 class Acceptor(PORT_COUNT: Int) extends Module {
   // Header Length = MAC * 2 + VLAN + EtherType
   val HEADER_LEN = 6 * 2 + 4 + 2
+  val MACS = VecInit(Consts.LOCAL_MACS)
 
   val io = IO(new Bundle {
     val rx = Flipped(new AXIS(8))
@@ -43,6 +44,8 @@ class Acceptor(PORT_COUNT: Int) extends Module {
     }
   }
 
+  val destMatch = output.eth.dest === 0xFFFFFFFFFFFFl.U || output.eth.dest === MACS(output.eth.vlan)
+
   val arpAcceptor = Module(new ARPAcceptor)
   val ipAcceptor = Module(new IPAcceptor)
 
@@ -53,8 +56,8 @@ class Acceptor(PORT_COUNT: Int) extends Module {
   ipAcceptor.io.payloadWriter <> io.ipWriter
 
   val headerEnd = cnt === HEADER_LEN.U && RegNext(cnt) =/= HEADER_LEN.U
-  arpAcceptor.io.start := pactype === PacType.arp && headerEnd
-  ipAcceptor.io.start := pactype === PacType.ipv4 && headerEnd
+  arpAcceptor.io.start := pactype === PacType.arp && destMatch && headerEnd
+  ipAcceptor.io.start := pactype === PacType.ipv4 && destMatch && headerEnd
 
   val arpEmit = pactype === PacType.arp && arpAcceptor.io.finished && !RegNext(arpAcceptor.io.finished)
   val ipEmit = pactype === PacType.ipv4 && ipAcceptor.io.headerFinished && !RegNext(ipAcceptor.io.headerFinished)
