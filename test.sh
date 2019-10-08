@@ -1,3 +1,3 @@
 #! /bin/bash
 
-sbt 'test:runMain Main --target-dir build --top-name Top --no-dce'
+sbt 'test:runMain forward.Main --target-dir build --top-name Top --no-dce'

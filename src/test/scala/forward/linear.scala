@@ -6,28 +6,44 @@ import chisel3.iotesters.PeekPokeTester
 
 import data._
 
-class LLFTTest(c: LLFT, PORT_COUNT: Int) extends PeekPokeTester(c) {
-    def gen_packet(ip_seq: Seq[Int]): Packet = {
-        val packet = new Packet(PORT_COUNT)
-        poke(packet.eth.pactype, PacType.ipv4)
+class LLFTTestModule(PORT_COUNT: Int) extends Module {
+    val io = IO(new Bundle {
+        val cnt = Input(UInt(8.W))
+        val idle = Output(Bool())
+        val pass = Output(Bool())
+    })
 
-        val ipInt = ip_seq.map(_.U(8.W))
-        val ipFirst :: ipRest = ipInt
-        poke(packet.ip.src, Cat(ipFirst, ipRest: _*))
+    val c = Module(new LLFT(PORT_COUNT))
+    val INPUTS = VecInit(Seq(
+        0x0A0001AA.U(32.W),
+        0x0A000319.U(32.W)
+    ))
+    val OUTPUTS = VecInit(Seq(
+        0x0A000102.U(32.W),
+        0x0A000302.U(32.W)
+    ))
 
-        packet
+    //val cnt = RegInit(0.U)
+
+    c.io <> DontCare
+    
+    c.io.input.eth.pactype := PacType.ipv4
+    c.io.input.ip.dest := INPUTS(io.cnt)
+    c.io.status := Status.normal
+    c.io.pause := 0.U
+
+    io.idle := !c.io.stall
+    io.pass := OUTPUTS(io.cnt) === c.io.output.lookup.nextHop
+}
+
+class LLFTTest(c: LLFTTestModule, PORT_COUNT: Int) extends PeekPokeTester(c) {
+    for (cnt <- 0 until 2) {
+        var done = false
+        do {
+            poke(c.io.cnt, cnt.U(8.W))
+            step(1)
+            done = peek(c.io.idle) == BigInt(1)
+        } while (!done)
+        expect(c.io.pass, true)
     }
-
-    val packet = gen_packet(Seq[Int](10, 0, 3, 100))
-    var done = false
-    do {
-        c.io.input := packet
-        c.io.status := Status.normal
-        poke(c.io.pause, 0)
-        step(1)
-        done = peek(c.io.stall) == BigInt(1)
-    } while (!done)
-
-    expect(c.io.outputStatus, ForwardLookup.forward)
-    expect(c.io.output.lookup.nextHop, 0x0A000302.U)
 }
