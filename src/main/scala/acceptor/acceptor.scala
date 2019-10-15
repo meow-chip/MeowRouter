@@ -63,8 +63,9 @@ class Acceptor(PORT_COUNT: Int) extends Module {
   val ipEmit = pactype === PacType.ipv4 && ipAcceptor.io.headerFinished && !RegNext(ipAcceptor.io.headerFinished)
   val ipIgnore = pactype === PacType.ipv4 && ipAcceptor.io.ignored
 
-  output.ip := ipAcceptor.io.output
   output.arp := arpAcceptor.io.output
+  output.ip := ipAcceptor.io.ip
+  output.icmp := ipAcceptor.io.icmp
 
   io.writer.en := arpEmit || (ipEmit && !ipIgnore)
   io.writer.data := output

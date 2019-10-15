@@ -3,6 +3,10 @@ import chisel3._
 
 object IP {
   val HeaderLength = 160
+
+  val ICMP_PROTO = 1
+  val TCP_PROTO = 6
+  val UDP_PROTO = 17
 }
 
 /**
