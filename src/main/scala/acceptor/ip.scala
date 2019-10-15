@@ -39,7 +39,8 @@ class IPAcceptor extends Module {
 
   when(io.rx.tvalid && (io.start || reading)) {
     when(cnt < HeaderByteLen.U) {
-      buf(19.U - cnt) := io.rx.tdata
+      // convert endianness to little endian
+      buf((HeaderByteLen-1).U - cnt) := io.rx.tdata
       cnt := cnt +% 1.U
     } .otherwise {
       io.payloadWriter.en := !ignored

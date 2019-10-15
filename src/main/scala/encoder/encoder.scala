@@ -118,7 +118,7 @@ class Encoder(PORT_COUNT: Int) extends Module {
         } .otherwise {
           // Is IP
           state := sIP
-          cnt := 19.U
+          cnt := (IP.HeaderLength/8-1).U
         }
       }
     }
