@@ -27,48 +27,40 @@ class IPAcceptor extends Module {
 
   val cnt = RegInit(0.U(log2Ceil(2048).W)) // MTU ~= 1500
   val reading = RegInit(false.B)
-  val header = RegInit(false.B)
   val ignored = RegInit(false.B)
 
+  val sIP :: sICMP :: sBody :: Nil = Enum(3)
+  val state = RegInit(sIP)
+
+  when(io.start) {
+    reading := true.B
+    ignored := false.B
+    state := sIP
+  }
+
+  // feed data into FIFO
   io.payloadWriter.clk := this.clock
   io.payloadWriter.data.data := io.rx.tdata
   io.payloadWriter.data.last := false.B
   io.payloadWriter.en := false.B
 
-  val sIP :: sICMP :: Nil = Enum(2)
-  val state = RegInit(sIP)
-
-  when(io.start) {
-    reading := true.B
-    header := true.B
-    ignored := false.B
-    state := sIP
-  }
-
-
   when(io.rx.tvalid && (io.start || reading)) {
     switch(state) {
       // reading the ip header
       is(sIP) {
-        // filling ipBuf
-        when(cnt < IPHeaderByteLen.U) {
+        // fill ipBuf
+        ipBuf((IPHeaderByteLen-1).U - cnt) := io.rx.tdata
+        // state trainsion
+        when(cnt < (IPHeaderByteLen-1).U) {
           // convert the endianness to little endian
-          ipBuf((IPHeaderByteLen-1).U - cnt) := io.rx.tdata
           cnt := cnt +% 1.U
-        }
-        
-        when(cnt === (IPHeaderByteLen-1).U && (RegNext(cnt) =/= (IPHeaderByteLen-1).U)) {
-          // Does continue to read?
-          // If it's a icmp packet, continue.
-          // Otherwise, finishedHeader = true
+        } .otherwise {
           when (io.ip.proto === IP.ICMP_PROTO.U) {
             cnt := 0.U
             state := sICMP
           } .otherwise {
-            header := false.B
+            state := sBody
           }
-
-          //TODO: need Xiayi to confirm this. Do we also need to put this statement into the processing of ICMP
           ignored := io.payloadWriter.progfull || io.ip.len > Consts.MAX_MTU.U
         }
       }
@@ -76,22 +68,22 @@ class IPAcceptor extends Module {
       // reading the icmp header
       is(sICMP) {
         // filling icmpBuf
-        when (cnt < (ICMPHeaderByteLen).U) {
-          icmpBuf((ICMPHeaderByteLen-1).U - cnt) := io.rx.tdata
+        icmpBuf((ICMPHeaderByteLen-1).U - cnt) := io.rx.tdata
+        // state trainsion
+        when (cnt < (ICMPHeaderByteLen-1).U) {
           cnt := cnt +% 1.U
+        } .otherwise {
+          state := sBody
         }
+      }
 
-        // finishedHeader = !header = true
-        when ((cnt === (ICMPHeaderByteLen - 1).U) && (RegNext(cnt) =/= (ICMPHeaderByteLen - 1).U)) {
-          header := false.B
-        }
+      is(sBody) {
+        // if this packet is illegal, we drop this packet
+        // otherwise, keep it's enable
+        io.payloadWriter.en := !ignored
       }
     }
 
-    // drop this packet?
-    // TODO: need Xiayi to confirm this
-    io.payloadWriter.en := !ignored
-      
     // no more data from the upper stage
     when(io.rx.tlast) {
       io.payloadWriter.data.last := true.B
@@ -103,6 +95,6 @@ class IPAcceptor extends Module {
   io.ip := ipBuf.asUInt.asTypeOf(io.ip)
   io.icmp := icmpBuf.asUInt.asTypeOf(io.icmp)
   io.ignored := ignored
-  io.headerFinished := !header
+  io.headerFinished := state === sBody
   io.rx.tready := true.B
 }

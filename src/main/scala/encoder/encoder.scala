@@ -167,8 +167,6 @@ class Encoder(PORT_COUNT: Int) extends Module {
           cnt := cnt - 1.U
         } .otherwise {
           state := sIPPIPE
-          // TODO: What if this is the last byte of this packet?
-          // TODO: Do we need to set io.writer.en to false for next cycle?
         }
       }
     }
