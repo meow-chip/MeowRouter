@@ -41,19 +41,22 @@ class TopTest(c: TopWrap) extends PeekPokeTester(c) {
     "00 00 00 00 00 01 00 12 17 CD DD 12 81 00 00 01 08 00 45 00 FF FF 32 22 00 00 40 01 34 85 0A 00 01 02 0A 00 03 06 08 00 80 D5 7B 43 00 03 5C BF EC 2E 00 03 C7 EF 08 09 0A 0B 0C 0D 0E 0F 10 11 12 13 14 15 16 17 18 19 1A 1B 1C 1D 1E 1F 20 21 22 23 24 25 26 27 28 29 2A 2B 2C 2D 2E 2F 30 31 32 33 34 35 36 37 26 7F 6C E4"
   )
 
-  // def set_clk_and_step1(v: Int) = {
-  //   poke(c.io.tx_clk, v)
-  //   poke(c.io.rx_clk, v)
-  //   step(1)
-  // }
-
-  def printPacket(buf: Vector[Int]) = {
-    println("recived packet: " + buf.map(x => "%02x".format(x)).mkString(" "))
-  }
+  val expectedPackets = List(
+    List("00 12 17 CD DD 12 00 00 00 00 00 01 81 00 00 01 08 06 00 01 08 00 06 04 00 02 00 00 00 00 00 01 0A 00 01 01 00 12 17 CD DD 12 0A 00 01 02"),
+    List(
+      "FF FF FF FF FF FF 00 00 00 00 00 01 81 00 00 01 08 06 00 01 08 00 06 04 00 01 00 00 00 00 00 01 0A 00 01 01 00 00 00 00 00 00 0A 00 02 02",
+      "FF FF FF FF FF FF 00 00 00 00 00 02 81 00 00 02 08 06 00 01 08 00 06 04 00 01 00 00 00 00 00 02 0A 00 02 01 00 00 00 00 00 00 0A 00 02 02",
+      "FF FF FF FF FF FF 00 00 00 00 00 03 81 00 00 03 08 06 00 01 08 00 06 04 00 01 00 00 00 00 00 03 0A 00 03 01 00 00 00 00 00 00 0A 00 02 02",
+      "FF FF FF FF FF FF 00 00 00 00 00 04 81 00 00 04 08 06 00 01 08 00 06 04 00 01 00 00 00 00 00 04 0A 00 04 01 00 00 00 00 00 00 0A 00 02 02"
+    ),
+    List(),
+    List("06 05 04 03 02 01 00 00 00 00 00 03 81 00 00 03 08 00 45 00 00 54 32 22 00 00 40 01 34 85 0A 00 01 02 0A 00 03 06 08 00 80 D5 7B 43 00 03 5C BF EC 2E 00 03 C7 EF 08 09 0A 0B 0C 0D 0E 0F 10 11 12 13 14 15 16 17 18 19 1A 1B 1C 1D 1E 1F 20 21 22 23 24 25 26 27 28 29 2A 2B 2C 2D 2E 2F 30 31 32 33 34 35 36 37 26 7F 6C E4"),
+    List()
+  )
 
   var recvBuf = Vector[Int]()
 
-  def peekData() = {
+  def peekData(pid: Int, rid: Int): Int = {
     val valid = peek(c.io.tx_tvalid) == BigInt(1)
     val last = peek(c.io.tx_tlast) == BigInt(1)
     val data = peek(c.io.tx_tdata).toInt
@@ -68,12 +71,19 @@ class TopTest(c: TopWrap) extends PeekPokeTester(c) {
     }
     
     if (last && recvBuf.length > 0) {
-      printPacket(recvBuf)
+      val recivedPacketStr = recvBuf.map(x => "%02x".format(x).toUpperCase).mkString(" ")
+      println("recived packet: " + recivedPacketStr)
+      assert(recivedPacketStr == expectedPackets(pid)(rid))
       recvBuf = Vector[Int]()
+      rid + 1
+    } else {
+      rid
     }
   }
 
-  for (p <- packetsStr) {
+  for (pid <- 0 until packetsStr.length) {
+    var recivedPacketCnt = 0
+    val p = packetsStr(pid)
     val sendBuf = p.split(" ").map(x => Integer.parseInt(x, 16))
     println("sending packet: " + p)
     for (i <- 0 until sendBuf.length) {
@@ -83,14 +93,20 @@ class TopTest(c: TopWrap) extends PeekPokeTester(c) {
 
       poke(c.io.tx_tready, true)
       step(1)
-      peekData()
+      recivedPacketCnt = peekData(pid, recivedPacketCnt)
     }
-    for (i <- 0 until 1000) {
-      poke(c.io.rx_tvalid, false)
-      poke(c.io.tx_tready, true)
+    breakable {
+      for (i <- 0 until 1000) {
+        poke(c.io.rx_tvalid, false)
+        poke(c.io.tx_tready, true)
 
-      step(1)
-      peekData()
+        step(1)
+        recivedPacketCnt = peekData(pid, recivedPacketCnt)
+        //println("recivedPacketCnt: " + recivedPacketCnt)
+        if (recivedPacketCnt == expectedPackets(pid).length && expectedPackets(pid).length != 0) {
+          break
+        }
+      }
     }
   }
 }

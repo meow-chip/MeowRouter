@@ -49,7 +49,7 @@ class Encoder(PORT_COUNT: Int) extends Module {
   io.writer.clk := this.clock
 
   // For ARPMISS
-  val arpEth = Wire(new Eth(PORT_COUNT))
+  val arpEth = Wire(new Eth(PORT_COUNT+1))
   arpEth.pactype := PacType.arp
   arpEth.dest := (-1).S(48.W).asUInt // Broadcast
 
