@@ -50,7 +50,7 @@ class IPAcceptor extends Module {
       is(sIP) {
         // fill ipBuf
         ipBuf((IPHeaderByteLen-1).U - cnt) := io.rx.tdata
-        // state trainsion
+        // state transition
         when(cnt < (IPHeaderByteLen-1).U) {
           // convert the endianness to little endian
           cnt := cnt +% 1.U
@@ -89,6 +89,7 @@ class IPAcceptor extends Module {
       io.payloadWriter.data.last := true.B
       reading := false.B
       cnt := 0.U
+      state := sIP
     }
   }
 
