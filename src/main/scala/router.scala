@@ -16,9 +16,9 @@ import _root_.util.Consts
 /**
  * The router module
  * Pipeline:
- * (Eth & CPU) -> Forward Table Lookup -> ARP Cache Lookup -> TCP Checksum -> Encoder -> (Eth)
- *                                          |
- *                                          ---> CPU (Forward table miss, ARP cache miss, or dest === localhost)
+ * (Eth & CPU) -> NAT -> Forward Table Lookup -> ARP Cache Lookup -> TCP Checksum -> Encoder -> (Eth)
+ *                                                    |
+ *                                                    ---> CPU (Forward table miss, ARP cache miss, or dest === localhost)
  * 
  * TCP Checksum stage is intended for NAT packets.
  * Currently we do not support hardward NAT, so all NAT packets are sent to CPU
