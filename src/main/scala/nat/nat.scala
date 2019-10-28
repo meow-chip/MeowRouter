@@ -76,8 +76,14 @@ class Nat(val PORT_COUNT: Int) extends Module {
     }
     is (sMATCHING) {
       // TODO: we haven't initialize the nat table yet. In case the valid is true and cause a bug, we && false at there.
-      val outbound = false.B && srcIP === natTable(searchingP).priIP && srcPort === natTable(searchingP).priPort && natTable(searchingP).valid
-      val inbound = false.B && dstIP === natTable(searchingP).bindIP && dstPort === natTable(searchingP).bindPort && natTable(searchingP).valid
+      val outbound = false.B &&
+                    srcIP === natTable(searchingP).priIP && srcPort === natTable(searchingP).priPort &&
+                    dstIP === natTable(searchingP).extIP && dstPort === natTable(searchingP).extPort &&
+                    natTable(searchingP).valid
+      val inbound = false.B &&
+                    srcIP === natTable(searchingP).extIP && srcPort === natTable(searchingP).extPort &&
+                    dstIP === natTable(searchingP).bindIP && dstPort === natTable(searchingP).bindPort &&
+                    natTable(searchingP).valid
       when (outbound) {
         srcIP := natTable(searchingP).bindIP
         srcPort := natTable(searchingP).bindPort
