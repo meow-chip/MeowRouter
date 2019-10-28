@@ -35,11 +35,8 @@ class Nat(val PORT_COUNT: Int) extends Module {
 
   // create a nat table
   val tableSize = 200
-  val natTable = VecInit(Array.fill[NatTableEntry](tableSize){
-    val e = new NatTableEntry()
-    e.valid := false.B
-    e
-  })
+  // TODO: initialize natTable
+  val natTable = Reg(Vec(tableSize, new NatTableEntry()));
   
   // variables for the state machine
   val sIDLE :: sMATCHING :: Nil = Enum(2)
@@ -66,21 +63,21 @@ class Nat(val PORT_COUNT: Int) extends Module {
       when(!io.pause) {
         status := io.status
         packet := io.input
-        when(io.status =/= Status.vacant) {
-          when (io.status =/= Status.dropped && io.input.eth.pactype === PacType.ipv4 && io.input.ip.proto === IP.ICMP_PROTO.U) {
+        when(io.status === Status.normal) {
+          when (io.input.eth.pactype === PacType.ipv4 && io.input.ip.proto === IP.ICMP_PROTO.U) {
             state := sMATCHING
-            // TODO: Should we set the status to Status.vacant in case the next stage keep accepting packets? Or it is OK since we have io.stall = true?
+            // It's like a bubble. Although the controller will pause the succeeding statge anyway.
+            // It may be useful after we rewrite the controller.
             status := Status.vacant
             searchingP := 0.U
-          } .otherwise {
-            status := io.status
           }
         }
       }
     }
     is (sMATCHING) {
-      val outbound = srcIP === natTable(searchingP).priIP && srcPort === natTable(searchingP).priPort && natTable(searchingP).valid
-      val inbound = dstIP === natTable(searchingP).bindIP && dstPort === natTable(searchingP).bindPort && natTable(searchingP).valid
+      // TODO: we haven't initialize the nat table yet. In case the valid is true and cause a bug, we && false at there.
+      val outbound = false.B && srcIP === natTable(searchingP).priIP && srcPort === natTable(searchingP).priPort && natTable(searchingP).valid
+      val inbound = false.B && dstIP === natTable(searchingP).bindIP && dstPort === natTable(searchingP).bindPort && natTable(searchingP).valid
       when (outbound) {
         srcIP := natTable(searchingP).bindIP
         srcPort := natTable(searchingP).bindPort
