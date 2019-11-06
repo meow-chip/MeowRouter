@@ -1,8 +1,11 @@
 package util
 import chisel3._
+import chisel3.core.withClock
+import chisel3.util._
 import chisel3.core.StringParam
 import chisel3.core.IntParam
 import chisel3.core.Reset
+import scala.math.max
 
 class InnerBridge(val width: Int, val depth: Int, val thresh: Int) extends BlackBox(Map(
   "FIFO_MEMORY_TYPE" -> StringParam("distributed"),
@@ -59,21 +62,56 @@ class AsyncBridge[+Type <: Data](t: Type, depth: Int = 16, spaceThresh: Int = -1
     val read = new AsyncReader(t)
   })
 
-  val thresh = if(spaceThresh < 0) { 7 } else { depth - spaceThresh + 1 }
+  def xpm_fifo_async_impl = {
+    val thresh = if(spaceThresh < 0) { 7 } else { depth - spaceThresh + 1 }
 
-  val width = t.getWidth
-  val inner = Module(new InnerBridge(width, depth, thresh))
+    val width = t.getWidth
+    val inner = Module(new InnerBridge(width, depth, thresh))
+  
+    inner.io.rst := this.reset
+  
+    inner.io.wr_clk := io.write.clk
+    inner.io.wr_en := io.write.en
+    inner.io.din := io.write.data.asUInt
+    io.write.full := inner.io.full
+    io.write.progfull := inner.io.prog_full
+  
+    inner.io.rd_clk := io.read.clk
+    inner.io.rd_en := io.read.en
+    io.read.data := inner.io.dout.asTypeOf(t)
+    io.read.empty := inner.io.empty
+  }
 
-  inner.io.rst := this.reset
+  def fake_register_impl = {
+    // We ignore read.clk and write.clk, and use the default clock to make our life easier.
 
-  inner.io.wr_clk := io.write.clk
-  inner.io.wr_en := io.write.en
-  inner.io.din := io.write.data.asUInt
-  io.write.full := inner.io.full
-  io.write.progfull := inner.io.prog_full
+    var buf = Mem(depth, t)
+    
+    var start = RegInit(0.U(log2Ceil(depth ).W))
+    val end = RegInit(0.U(log2Ceil(depth).W))
 
-  inner.io.rd_clk := io.read.clk
-  inner.io.rd_en := io.read.en
-  io.read.data := inner.io.dout.asTypeOf(t)
-  io.read.empty := inner.io.empty
+    // the maximum size is actually depth - 1 since we have to distinguish between the status of empty and full
+    val full = start === end + 1.U
+    val empty = start === end
+    val size = end - start
+
+    buf.write(end, io.write.data)
+    io.write.full := full
+    io.write.progfull := (size + max(0, spaceThresh).U) > (depth - 1).U || full // TODO: we haven't considered the overflow yet
+    when(io.write.en && !full) {
+      end := end + 1.U
+    }
+
+    io.read.data := buf.read(start)
+    io.read.empty := empty
+    when(io.read.en && !empty) {
+      start := start + 1.U
+    }
+  }
+
+  if (Configs.isTesting) {
+    fake_register_impl
+  } else {
+    xpm_fifo_async_impl
+  }
 }

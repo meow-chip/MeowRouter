@@ -31,12 +31,13 @@ class Encoder(PORT_COUNT: Int) extends Module {
   val writing = RegInit(false.B)
   val cnt = RegInit(0.U)
 
-  val sIDLE :: sETH :: sARP :: sIP :: sIPPIPE :: sARPMISS :: sIPDROP :: Nil = Enum(7)
+  val sIDLE :: sETH :: sARP :: sIP :: sICMP :: sIPPIPE :: sARPMISS :: sIPDROP :: Nil = Enum(8)
   val state = RegInit(sIDLE)
 
   val sending = Reg(new ARPOutput(PORT_COUNT))
   val arpView = sending.packet.arp.asUInt.asTypeOf(Vec(28, UInt(8.W)))
-  val ipView = sending.packet.ip.asUInt.asTypeOf(Vec(20, UInt(8.W)))
+  val ipView = sending.packet.ip.asUInt.asTypeOf(Vec(IP.HeaderLength/8, UInt(8.W)))
+  val icmpView = sending.packet.icmp.asUInt.asTypeOf(Vec(ICMP.HeaderLength/8, UInt(8.W)))
   val headerView = sending.packet.eth.asVec
 
   io.ipReader.clk := this.clock
@@ -48,7 +49,7 @@ class Encoder(PORT_COUNT: Int) extends Module {
   io.writer.clk := this.clock
 
   // For ARPMISS
-  val arpEth = Wire(new Eth(PORT_COUNT))
+  val arpEth = Wire(new Eth(PORT_COUNT+1))
   arpEth.pactype := PacType.arp
   arpEth.dest := (-1).S(48.W).asUInt // Broadcast
 
@@ -118,7 +119,7 @@ class Encoder(PORT_COUNT: Int) extends Module {
         } .otherwise {
           // Is IP
           state := sIP
-          cnt := 19.U
+          cnt := (IP.HeaderLength/8-1).U
         }
       }
     }
@@ -139,6 +140,25 @@ class Encoder(PORT_COUNT: Int) extends Module {
 
     is(sIP) {
       io.writer.data.data := ipView(cnt)
+      io.writer.data.last := false.B
+      io.writer.en := true.B
+
+      when(!io.writer.full) {
+        when(cnt > 0.U) {
+          cnt := cnt - 1.U
+        } .otherwise {
+          when (sending.packet.ip.proto === IP.ICMP_PROTO.U) {
+            cnt := (ICMP.HeaderLength/8-1).U
+            state := sICMP
+          } .otherwise {
+            state := sIPPIPE
+          }
+        }
+      }
+    }
+
+    is(sICMP) {
+      io.writer.data.data := icmpView(cnt)
       io.writer.data.last := false.B
       io.writer.en := true.B
 

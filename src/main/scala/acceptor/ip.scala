@@ -2,7 +2,7 @@ package acceptor
 
 import chisel3._;
 import data._;
-import chisel3.util.log2Ceil
+import chisel3.util._
 import _root_.util.AsyncWriter
 import encoder.EncoderUnit
 import _root_.util.Consts
@@ -10,7 +10,8 @@ import _root_.util.Consts
 class IPAcceptor extends Module {
   val io = IO(new Bundle {
     val rx = Flipped(new AXIS(8))
-    val output = Output(new IP)
+    val ip = Output(new IP)
+    val icmp = Output(new ICMP)
     val start = Input(Bool())
     val headerFinished = Output(Bool())
     val ignored = Output(Bool())
@@ -18,47 +19,83 @@ class IPAcceptor extends Module {
     val payloadWriter = Flipped(new AsyncWriter(new EncoderUnit))
   })
 
-  val HeaderByteLen = IP.HeaderLength / 8
-  val buf = Reg(Vec(HeaderByteLen, UInt(8.W)))
+  val IPHeaderByteLen = IP.HeaderLength / 8
+  val ICMPHeaderByteLen = ICMP.HeaderLength / 8
+
+  val ipBuf = Reg(Vec(IPHeaderByteLen, UInt(8.W)))
+  val icmpBuf = Reg(Vec(ICMPHeaderByteLen, UInt(8.W)))
 
   val cnt = RegInit(0.U(log2Ceil(2048).W)) // MTU ~= 1500
   val reading = RegInit(false.B)
-  val header = RegInit(false.B)
   val ignored = RegInit(false.B)
 
+  val sIP :: sICMP :: sBody :: Nil = Enum(3)
+  val state = RegInit(sIP)
+
+  when(io.start) {
+    reading := true.B
+    ignored := false.B
+    state := sIP
+  }
+
+  // feed data into FIFO
   io.payloadWriter.clk := this.clock
   io.payloadWriter.data.data := io.rx.tdata
   io.payloadWriter.data.last := false.B
   io.payloadWriter.en := false.B
 
-  when(io.start) {
-    reading := true.B
-    header := true.B
-    ignored := false.B
-  }
-
   when(io.rx.tvalid && (io.start || reading)) {
-    when(cnt < HeaderByteLen.U) {
-      buf(19.U - cnt) := io.rx.tdata
-      cnt := cnt +% 1.U
-    } .otherwise {
-      io.payloadWriter.en := !ignored
+    switch(state) {
+      // reading the ip header
+      is(sIP) {
+        // fill ipBuf
+        ipBuf((IPHeaderByteLen-1).U - cnt) := io.rx.tdata
+        // state transition
+        when(cnt < (IPHeaderByteLen-1).U) {
+          // convert the endianness to little endian
+          cnt := cnt +% 1.U
+        } .otherwise {
+          when (io.ip.proto === IP.ICMP_PROTO.U) {
+            cnt := 0.U
+            state := sICMP
+          } .otherwise {
+            state := sBody
+          }
+          ignored := io.payloadWriter.progfull || io.ip.len > Consts.MAX_MTU.U
+        }
+      }
+
+      // reading the icmp header
+      is(sICMP) {
+        // filling icmpBuf
+        icmpBuf((ICMPHeaderByteLen-1).U - cnt) := io.rx.tdata
+        // state trainsion
+        when (cnt < (ICMPHeaderByteLen-1).U) {
+          cnt := cnt +% 1.U
+        } .otherwise {
+          state := sBody
+        }
+      }
+
+      is(sBody) {
+        // if this packet is illegal, we drop this packet
+        // otherwise, keep it's enable
+        io.payloadWriter.en := !ignored
+      }
     }
 
-    when(cnt === (HeaderByteLen-1).U && (RegNext(cnt) =/= (HeaderByteLen-1).U)) {
-      ignored := io.payloadWriter.progfull || io.output.len > Consts.MAX_MTU.U
-      header := false.B
-    }
-
+    // no more data from the upper stage
     when(io.rx.tlast) {
       io.payloadWriter.data.last := true.B
       reading := false.B
       cnt := 0.U
+      state := sIP
     }
   }
 
-  io.output := buf.asUInt.asTypeOf(io.output)
+  io.ip := ipBuf.asUInt.asTypeOf(io.ip)
+  io.icmp := icmpBuf.asUInt.asTypeOf(io.icmp)
   io.ignored := ignored
-  io.headerFinished := !header
+  io.headerFinished := state === sBody
   io.rx.tready := true.B
 }
