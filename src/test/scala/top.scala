@@ -110,9 +110,3 @@ class TopTest(c: TopWrap) extends PeekPokeTester(c) {
     }
   }
 }
-
-object TopTestMain {
-  def main(args: Array[String]): Unit = {
-    if (!Driver(() => new TopWrap())(c => new TopTest(c))) System.exit(1)
-  }
-}

@@ -65,10 +65,3 @@ class AcceptorTest(PORT_COUNT: Int, c: AcceptorWrapper) extends PeekPokeTester(c
     assert(packetType.toInt == results(p_id))
   }
 }
-
-object AcceptorTestMain {
-  def main(args: Array[String]): Unit = {
-    if (!Driver(() => new AcceptorWrapper(4))(c => new AcceptorTest(4, c))) System.exit(1)
-  }
-}
-  

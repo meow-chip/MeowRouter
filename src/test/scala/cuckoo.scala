@@ -42,10 +42,3 @@ class TestCuckoo(c: HashTable, KeySize: Int, ValueSize: Int) extends PeekPokeTes
     assert(peek(c.io.answerValue) == BigInt(vals(i)))
   }
 }
-
-object TestCuckooMain {
-  def main(args: Array[String]): Unit = {
-    if (!Driver(() => new HashTable(32, 8))(c => new TestCuckoo(c, 32, 8))) System.exit(1)
-  }
-}
-  
