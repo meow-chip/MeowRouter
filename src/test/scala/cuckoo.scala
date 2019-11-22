@@ -10,11 +10,13 @@ class TestCuckoo(c: HashTable, KeySize: Int, ValueSize: Int) extends PeekPokeTes
 
   def waitWhenStalled(): Unit = {
     var cnt = 0
+    step(1)
     while (peek(c.io.stall) == BigInt(1)) {      
       cnt = cnt + 1
       assert(cnt <= 10)
       step(1)
     }
+    // println(s"Waited $cnt steps")
   }
 
   // insert
@@ -25,7 +27,6 @@ class TestCuckoo(c: HashTable, KeySize: Int, ValueSize: Int) extends PeekPokeTes
     poke(c.io.setEn, true)
     poke(c.io.queryEn, false)
     waitWhenStalled()
-    println(peek(c.io.answerValue).toString)
   }
 
   // query
@@ -34,9 +35,8 @@ class TestCuckoo(c: HashTable, KeySize: Int, ValueSize: Int) extends PeekPokeTes
     poke(c.io.key, keys(i))
     poke(c.io.setEn, false)
     poke(c.io.queryEn, true)
-    step(1)
     waitWhenStalled()
-    println(peek(c.io.answerValue).toString)
+    //println(peek(c.io.answerValue).toString)
     assert(peek(c.io.answerEn) == BigInt(1))
     assert(peek(c.io.answerFound) == BigInt(1))
     assert(peek(c.io.answerValue) == BigInt(vals(i)))
