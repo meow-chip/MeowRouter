@@ -2,6 +2,7 @@ package cuckoo
 
 import chisel3._
 import chisel3.util._
+import _root_.util.CRC
 
 class HashTable(val KeySize: Int, val ValueSize: Int) extends Module {
   val io = IO(new Bundle {
@@ -45,7 +46,7 @@ class HashTable(val KeySize: Int, val ValueSize: Int) extends Module {
     is (sIDLE) {
       answerEn := false.B
       key := io.key
-      keyHash := io.key // TODO: This is just a mod operation for now. Use a real hash function instead.
+      keyHash := CRC(CRC.CRC_8F_6, io.key, KeySize)
       when (io.queryEn) {
         state := sReading
       } .elsewhen (io.setEn) {

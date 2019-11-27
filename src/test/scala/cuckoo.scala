@@ -5,7 +5,7 @@ import chisel3.util._
 import chisel3.iotesters.{Driver, TesterOptionsManager, PeekPokeTester}
 
 class TestCuckoo(c: HashTable, KeySize: Int, ValueSize: Int) extends PeekPokeTester(c) {
-  val keys = List(312, 232, 32323, 7889000, 890)
+  val keys = List(1, 1024+1, 2048+1, 65536+1, 890)
   val vals = List(1, 2, 3, 233, 4)
 
   def waitWhenStalled(): Unit = {
