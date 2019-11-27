@@ -94,7 +94,6 @@ class HashTable(val KeySize: Int, val ValueSize: Int) extends Module {
       state := sSetting1
     }
     is (sSetting1) {
-      // !!! This doesn't work. The behavior is that when using the second slot (pairs(1)), it will set all slots to pair, i.e. firstEmptys are all true.
       val firstEmptys = Array.tabulate(4) { bucket.pairs(_).valid === false.B }
       for (i <- 1 until 4) {
         for (j <- 0 until i) {
