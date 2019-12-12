@@ -7,14 +7,16 @@ import _root_.util.Consts
 import data._
 import encoder.EncoderUnit
 
+class BufPort extends Bundle {
+  val clk = Output(Clock())
+  val addr = Output(UInt(32.W))
+  val din = Output(UInt(8.W))
+  val dout = Input(UInt(8.W))
+  val we = Output(Bool())
+}
+
 class Adapter extends MultiIOModule {
-  val toBuf = IO(new Bundle {
-    val clk = Output(Clock())
-    val addr = Output(UInt(32.W))
-    val din = Output(UInt(8.W))
-    val dout = Input(UInt(8.W))
-    val we = Output(Bool())
-  })
+  val toBuf = IO(new BufPort)
 
   val fromExec = IO(new Bundle {
     val input = Input(UInt(8.W))
@@ -70,7 +72,6 @@ class Adapter extends MultiIOModule {
 
   val raddr = Wire(UInt(32.W))
   toBuf.addr := raddr
-  // Compute raddr
 
   switch(state) {
     is(State.rst) {

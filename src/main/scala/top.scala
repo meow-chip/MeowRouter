@@ -17,6 +17,12 @@ class Top extends Module {
     val tx_tlast = Output(Bool())
     val tx_tready = Input(Bool())
     val tx_tuser = Output(Bool())
+
+    val buf_clk = Output(Clock())
+    val buf_addr = Output(UInt(32.W))
+    val buf_din = Output(UInt(8.W))
+    val buf_dout = Input(UInt(8.W))
+    val buf_we = Output(Bool())
   })
 
   val router = Module(new Router(4))
@@ -33,6 +39,12 @@ class Top extends Module {
   io.tx_tlast := router.io.tx.tlast;
   io.tx_tvalid := router.io.tx.tvalid;
   router.io.tx.tready := io.tx_tready
+
+  io.buf_addr := router.io.buf.addr
+  io.buf_clk := router.io.buf.clk
+  io.buf_din := router.io.buf.din
+  io.buf_dout := router.io.buf.dout
+  io.buf_we := router.io.buf.we
 
   io.tx_tuser := false.B
 }

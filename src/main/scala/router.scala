@@ -32,6 +32,8 @@ class Router(PORT_NUM: Int) extends Module {
 
     val rx = Flipped(new AXIS(8))
     val tx = new AXIS(8)
+
+    val buf = new BufPort
   })
 
   val acceptorBridge = Module(new AsyncBridge(new Packet(PORT_NUM)))
@@ -82,6 +84,11 @@ class Router(PORT_NUM: Int) extends Module {
   encoder.io.status := arp.io.outputStatus
   encoder.io.writer <> transmitterBridge.io.write
   encoder.io.payloadReader <> payloadBridge.io.read
+
+  val adapter = Module(new Adapter)
+  adapter.toBuf <> io.buf
+  encoder.toAdapter <> adapter.fromExec
+  adapter.toExec := DontCare
 
   withClock(io.tx_clk) {
     val transmitter = Module(new Transmitter)
