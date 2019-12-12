@@ -15,9 +15,12 @@ class Acceptor(PORT_COUNT: Int) extends Module {
     val rx = Flipped(new AXIS(8))
 
     val writer = Flipped(new AsyncWriter(new Packet(PORT_COUNT)))
-    val ipWriter = Flipped(new AsyncWriter(new EncoderUnit))
-    val opaqueWriter = Flipped(new AsyncWriter(new EncoderUnit))
+    val payloadWriter = Flipped(new AsyncWriter(new EncoderUnit))
   })
+
+  val ipAcceptor = Module(new IPAcceptor)
+  ipAcceptor.io.rx <> io.rx
+  ipAcceptor.io.payloadWriter <> io.payloadWriter
 
   val cnt = RegInit(0.asUInt(12.W))
   val header = Reg(Vec(HEADER_LEN, UInt(8.W)))
@@ -34,10 +37,6 @@ class Acceptor(PORT_COUNT: Int) extends Module {
   output.eth.vlan := header(2)
   output.eth.pactype := pactype
 
-  io.opaqueWriter := DontCare
-  io.opaqueWriter.clk := this.clock
-  io.opaqueWriter.en := false.B
-
   when(io.rx.tvalid) {
     when(io.rx.tlast) {
       cnt := 0.U
@@ -51,24 +50,18 @@ class Acceptor(PORT_COUNT: Int) extends Module {
     when(cnt < HEADER_LEN.U) {
       header(17.U - cnt) := io.rx.tdata
     }.elsewhen(opaqueRecv) {
-      io.opaqueWriter.en := true.B
-      io.opaqueWriter.data.data := io.rx.tdata
-      io.opaqueWriter.full := io.rx.tlast
+      io.payloadWriter.en := true.B
+      io.payloadWriter.data.data := io.rx.tdata
+      io.payloadWriter.full := io.rx.tlast
     }
   }
 
   val destMatch = output.eth.dest === 0xFFFFFFFFFFFFl.U || output.eth.dest === MACS(output.eth.vlan)
 
-  val ipAcceptor = Module(new IPAcceptor)
-
-  ipAcceptor.io.rx <> io.rx
-
-  ipAcceptor.io.payloadWriter <> io.ipWriter
-
   val headerEnd = cnt === HEADER_LEN.U && RegNext(cnt) =/= HEADER_LEN.U
 
   val isOpaque = pactype =/= PacType.ipv4 && destMatch && headerEnd
-  when(headerEnd && isOpaque && !io.opaqueWriter.progfull) {
+  when(headerEnd && isOpaque && !io.payloadWriter.progfull) {
     opaque := true.B
     opaqueRecv := true.B
 

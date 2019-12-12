@@ -41,16 +41,14 @@ class Router(PORT_NUM: Int) extends Module {
   transmitterBridge.io.write.clk := this.clock
   transmitterBridge.io.write.progfull := DontCare
 
-  val ipBridge = Module(new AsyncBridge(new EncoderUnit, Consts.IP_BUF, Consts.MAX_MTU))
-  val opaqueBridge = Module(new AsyncBridge(new EncoderUnit, Consts.OPAQUE_BUF, Consts.MAX_MTU))
+  val payloadBridge = Module(new AsyncBridge(new EncoderUnit, Consts.PAYLOAD_BUF, Consts.MAX_MTU))
 
   withClock(io.rx_clk) {
     val acceptor = Module(new Acceptor(PORT_NUM))
 
     acceptor.io.rx <> io.rx
     acceptorBridge.io.write <> acceptor.io.writer
-    ipBridge.io.write <> acceptor.io.ipWriter
-    opaqueBridge.io.write <> acceptor.io.opaqueWriter
+    payloadBridge.io.write <> acceptor.io.payloadWriter
   }
 
   val ctrl = Module(new Ctrl())
@@ -83,7 +81,7 @@ class Router(PORT_NUM: Int) extends Module {
   encoder.io.input := arp.io.output
   encoder.io.status := arp.io.outputStatus
   encoder.io.writer <> transmitterBridge.io.write
-  encoder.io.ipReader <> ipBridge.io.read
+  encoder.io.payloadReader <> payloadBridge.io.read
 
   withClock(io.tx_clk) {
     val transmitter = Module(new Transmitter)

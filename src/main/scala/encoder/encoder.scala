@@ -22,7 +22,7 @@ class Encoder(PORT_COUNT: Int) extends Module {
     val pause = Input(Bool())
 
     val writer = Flipped(new AsyncWriter(new EncoderUnit))
-    val ipReader = Flipped(new AsyncReader(new EncoderUnit))
+    val payloadReader = Flipped(new AsyncReader(new EncoderUnit))
   })
 
   val MACS = VecInit(Consts.LOCAL_MACS)
@@ -39,8 +39,8 @@ class Encoder(PORT_COUNT: Int) extends Module {
   val icmpView = sending.packet.icmp.asUInt.asTypeOf(Vec(ICMP.HeaderLength/8, UInt(8.W)))
   val headerView = sending.packet.eth.asVec
 
-  io.ipReader.clk := this.clock
-  io.ipReader.en := false.B
+  io.payloadReader.clk := this.clock
+  io.payloadReader.en := false.B
 
   io.writer.data.last := false.B
   io.writer.data.data := 0.asUInt.asTypeOf(io.writer.data.data)
@@ -108,19 +108,19 @@ class Encoder(PORT_COUNT: Int) extends Module {
     }
 
     is(sIPPIPE) {
-      io.writer.data := io.ipReader.data
-      val transfer = (!io.ipReader.empty) && (!io.writer.full)
+      io.writer.data := io.payloadReader.data
+      val transfer = (!io.payloadReader.empty) && (!io.writer.full)
       io.writer.en := transfer
-      io.ipReader.en := transfer
+      io.payloadReader.en := transfer
 
-      when(io.ipReader.data.last && transfer) {
+      when(io.payloadReader.data.last && transfer) {
         state := sIDLE
       }
     }
 
     is(sIPDROP) {
-      io.ipReader.en := true.B
-      when(io.ipReader.data.last) { state := sIDLE }
+      io.payloadReader.en := true.B
+      when(io.payloadReader.data.last) { state := sIDLE }
     }
   }
 
