@@ -31,11 +31,10 @@ class Encoder(PORT_COUNT: Int) extends Module {
   val writing = RegInit(false.B)
   val cnt = RegInit(0.U)
 
-  val sIDLE :: sETH :: sARP :: sIP :: sICMP :: sIPPIPE :: sARPMISS :: sIPDROP :: Nil = Enum(8)
+  val sIDLE :: sETH :: sIP :: sICMP :: sIPPIPE :: sIPDROP :: Nil = Enum(8)
   val state = RegInit(sIDLE)
 
   val sending = Reg(new ARPOutput(PORT_COUNT))
-  val arpView = sending.packet.arp.asUInt.asTypeOf(Vec(28, UInt(8.W)))
   val ipView = sending.packet.ip.asUInt.asTypeOf(Vec(IP.HeaderLength/8, UInt(8.W)))
   val icmpView = sending.packet.icmp.asUInt.asTypeOf(Vec(ICMP.HeaderLength/8, UInt(8.W)))
   val headerView = sending.packet.eth.asVec
@@ -48,59 +47,12 @@ class Encoder(PORT_COUNT: Int) extends Module {
   io.writer.en := false.B
   io.writer.clk := this.clock
 
-  // For ARPMISS
-  val arpEth = Wire(new Eth(PORT_COUNT+1))
-  arpEth.pactype := PacType.arp
-  arpEth.dest := (-1).S(48.W).asUInt // Broadcast
-
-  val arpReq = Wire(new ARP(48, 32))
-  arpReq.htype := ARP.HtypeEth
-  arpReq.ptype := ARP.PtypeIPV4
-  arpReq.hlen := 6.U
-  arpReq.plen := 4.U
-  arpReq.oper := ARP.OperRequest
-  arpReq.tpa := sending.forward.nextHop
-  arpReq.tha := 0.U
-
-  val port = RegInit(1.U(log2Ceil(PORT_COUNT+1).W))
-  arpEth.vlan := port
-  arpEth.sender := MACS(port)
-  arpReq.sha := MACS(port)
-  arpReq.spa := IPS(port)
-
-  val arpMissPayload = Cat(arpEth.toBits(), arpReq.asUInt()).asTypeOf(Vec(18 + 28, UInt(8.W)))
-
   switch(state) {
     is(sIDLE) {
       when(!io.pause && io.status === Status.normal) {
         sending := io.input
-        when(io.input.packet.eth.pactype =/= PacType.arp && !io.input.arp.found) {
-          state := sARPMISS
-          port := 1.U
-          cnt := (18 + 28 -1).U
-        }.elsewhen(io.input.packet.eth.pactype =/= PacType.arp
-          || io.input.packet.eth.sender === MACS(io.input.packet.eth.vlan)
-        ) {
-          state := sETH
-          cnt := 17.U
-        }
-      }
-    }
-
-    is(sARPMISS) {
-      io.writer.data.data := arpMissPayload(cnt)
-      io.writer.data.last := cnt === 0.U
-      io.writer.en := true.B
-
-      when(!io.writer.full) {
-        when(cnt > 0.U) {
-          cnt := cnt - 1.U
-        } .elsewhen(port < PORT_COUNT.U) {
-          cnt := (18 + 28 -1).U
-          port := port + 1.U
-        } .otherwise {
-          state := sIPDROP
-        }
+        state := sETH
+        cnt := 17.U
       }
     }
 
@@ -112,28 +64,12 @@ class Encoder(PORT_COUNT: Int) extends Module {
       when(!io.writer.full) {
         when(cnt > 0.U) {
           cnt := cnt - 1.U
-        } .elsewhen(sending.packet.eth.pactype === PacType.arp) {
-          // Is ARP
-          state := sARP
-          cnt := 27.U
-        } .otherwise {
+        } .elsewhen(sending.packet.eth.pactype === PacType.ipv4) {
           // Is IP
           state := sIP
           cnt := (IP.HeaderLength/8-1).U
-        }
-      }
-    }
-
-    is(sARP) {
-      io.writer.data.data := arpView(cnt)
-      io.writer.data.last := cnt === 0.U
-      io.writer.en := true.B
-
-      when(!io.writer.full) {
-        when(cnt > 0.U) {
-          cnt := cnt - 1.U
         } .otherwise {
-          state := sIDLE
+          // FIXME: opaque packets, send to CPU
         }
       }
     }

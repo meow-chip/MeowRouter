@@ -46,28 +46,23 @@ class Acceptor(PORT_COUNT: Int) extends Module {
 
   val destMatch = output.eth.dest === 0xFFFFFFFFFFFFl.U || output.eth.dest === MACS(output.eth.vlan)
 
-  val arpAcceptor = Module(new ARPAcceptor)
   val ipAcceptor = Module(new IPAcceptor)
 
-  val arpRx :: ipRx :: Nil = io.rx.split(2)
-  arpAcceptor.io.rx <> arpRx
-  ipAcceptor.io.rx <> ipRx
+  ipAcceptor.io.rx <> io.rx
 
   ipAcceptor.io.payloadWriter <> io.ipWriter
 
   val headerEnd = cnt === HEADER_LEN.U && RegNext(cnt) =/= HEADER_LEN.U
-  arpAcceptor.io.start := pactype === PacType.arp && destMatch && headerEnd
   ipAcceptor.io.start := pactype === PacType.ipv4 && destMatch && headerEnd
 
-  val arpEmit = pactype === PacType.arp && arpAcceptor.io.finished && !RegNext(arpAcceptor.io.finished)
   val ipEmit = pactype === PacType.ipv4 && ipAcceptor.io.headerFinished && !RegNext(ipAcceptor.io.headerFinished)
   val ipIgnore = pactype === PacType.ipv4 && ipAcceptor.io.ignored
 
-  output.arp := arpAcceptor.io.output
   output.ip := ipAcceptor.io.ip
   output.icmp := ipAcceptor.io.icmp
 
-  io.writer.en := arpEmit || (ipEmit && !ipIgnore)
+  // TODO: support packets other than IP
+  io.writer.en := ipEmit && !ipIgnore
   io.writer.data := output
   io.writer.full := DontCare
   io.writer.progfull := DontCare

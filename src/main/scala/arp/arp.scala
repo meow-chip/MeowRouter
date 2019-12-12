@@ -58,35 +58,12 @@ class ARPTable(PORT_COUNT: Int, SIZE: Int) extends Module {
     pipe.arp := DontCare
 
     when(io.status === Status.normal) {
-      when(io.input.packet.eth.pactype === PacType.arp && io.input.packet.arp.oper === ARP.OperReply) {
-        store(ptr).valid := true.B
-        store(ptr).ip := io.input.packet.arp.spa
-        store(ptr).mac := io.input.packet.arp.sha
-        store(ptr).at := io.input.packet.eth.vlan
-        ptr := ptr + 1.U
-        for(i <- (0 until SIZE)) {
-          when(store(i).ip === io.input.packet.arp.spa && i.U =/= ptr) {
-            store(i).valid := false.B
-          }
-        }
-      }.elsewhen(io.input.packet.eth.pactype === PacType.arp && io.input.packet.arp.oper === ARP.OperRequest) {
-        when(io.input.packet.arp.tpa === IPS(io.input.packet.eth.vlan)) {
-          pipe.packet.eth.dest := io.input.packet.eth.sender
-          pipe.packet.eth.sender := MACS(io.input.packet.eth.vlan)
-          pipe.packet.arp.oper := ARP.OperReply
-          pipe.packet.arp.tha := io.input.packet.arp.sha
-          pipe.packet.arp.tpa := io.input.packet.arp.spa
-          pipe.packet.arp.sha := MACS(io.input.packet.eth.vlan)
-          pipe.packet.arp.spa := IPS(io.input.packet.eth.vlan)
-        }
-      }.otherwise {
-        pipe.arp.found := found
-        pipe.arp.at := entry.at
-        pipe.arp.mac := entry.mac
-        pipe.packet.eth.vlan := entry.at
-        pipe.packet.eth.dest := entry.mac
-        pipe.packet.eth.sender := MACS(entry.at)
-      }
+      pipe.arp.found := found
+      pipe.arp.at := entry.at
+      pipe.arp.mac := entry.mac
+      pipe.packet.eth.vlan := entry.at
+      pipe.packet.eth.dest := entry.mac
+      pipe.packet.eth.sender := MACS(entry.at)
     }
   }
 
