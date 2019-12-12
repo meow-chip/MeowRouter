@@ -22,7 +22,7 @@ class Top extends Module {
     val buf_addr = Output(UInt(32.W))
     val buf_din = Output(UInt(8.W))
     val buf_dout = Input(UInt(8.W))
-    val buf_we = Output(Bool())
+    val buf_we = Output(UInt(1.W))
   })
 
   val router = Module(new Router(4))
@@ -43,8 +43,8 @@ class Top extends Module {
   io.buf_addr := router.io.buf.addr
   io.buf_clk := router.io.buf.clk
   io.buf_din := router.io.buf.din
-  io.buf_dout := router.io.buf.dout
-  io.buf_we := router.io.buf.we
+  router.io.buf.dout := io.buf_dout
+  io.buf_we := router.io.buf.we.asUInt
 
   io.tx_tuser := false.B
 }

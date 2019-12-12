@@ -45,14 +45,20 @@ class Adapter extends MultiIOModule {
   toBuf.we := false.B
   toBuf.din := DontCare
 
-  // By default
   fromExec.stall := true.B
+  toExec.writer := DontCare
 
   val state = RegInit(State.rst)
   val nstate = Wire(State())
+  nstate := state
+  state := nstate
 
   val head = RegInit(1.U(log2Ceil(Consts.CPUBUF_COUNT).W))
   val tail = RegInit(1.U(log2Ceil(Consts.CPUBUF_COUNT).W))
+
+  def step(sig: UInt): UInt = {
+    Mux(sig === (Consts.CPUBUF_COUNT-1).U, 1.U, sig +% 1.U)
+  }
 
   val bufAddrShift = log2Ceil(Consts.CPUBUF_SIZE)
   val statusOffset = (Consts.CPUBUF_SIZE - 1).U(bufAddrShift.W)
@@ -71,6 +77,7 @@ class Adapter extends MultiIOModule {
   val transferState = RegInit(TransferState.payload)
 
   val raddr = Wire(UInt(32.W))
+  raddr := DontCare
   toBuf.addr := raddr
 
   switch(state) {
@@ -98,7 +105,7 @@ class Adapter extends MultiIOModule {
         raddr := head << bufAddrShift
         cnt := 0.U
       }.elsewhen(fromExec.valid && !dropping) {
-        when(tail +% 1.U =/= head) {
+        when(step(tail) =/= head) {
           nstate := State.incoming
           transferState := TransferState.payload
           cnt := 0.U
@@ -115,7 +122,7 @@ class Adapter extends MultiIOModule {
       
       when(toBuf.dout === Status.idle.asUInt()) {
         when(head =/= tail) { // Ring buf not empty
-          head := head +% 1.U
+          head := step(head)
         }
       }
     }
@@ -125,6 +132,7 @@ class Adapter extends MultiIOModule {
         is(TransferState.payload) {
           raddr := tail ## cnt
           toBuf.din := fromExec.input
+          fromExec.stall := false.B
 
           when(fromExec.valid) {
             toBuf.we := true.B
@@ -158,7 +166,7 @@ class Adapter extends MultiIOModule {
         }
 
         is(TransferState.fin) {
-          tail := tail +% 1.U
+          tail := step(tail)
 
           nstate := State.pollZero
           raddr := statusOffset

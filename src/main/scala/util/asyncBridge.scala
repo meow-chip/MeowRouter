@@ -17,7 +17,7 @@ class InnerBridge(val width: Int, val depth: Int, val thresh: Int) extends Black
   "PROG_FULL_THRESH" -> IntParam(thresh)
 )) {
   val io = IO(new Bundle {
-    val rst = Input(Bool())
+    val rst = Input(Reset())
 
     val wr_clk = Input(Clock())
     val wr_en = Input(Bool())

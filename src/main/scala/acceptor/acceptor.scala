@@ -52,7 +52,7 @@ class Acceptor(PORT_COUNT: Int) extends Module {
     }.elsewhen(opaqueRecv) {
       io.payloadWriter.en := true.B
       io.payloadWriter.data.data := io.rx.tdata
-      io.payloadWriter.full := io.rx.tlast
+      io.payloadWriter.data.last := io.rx.tlast
     }
   }
 

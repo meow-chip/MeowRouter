@@ -27,11 +27,11 @@ class Encoder(PORT_COUNT: Int) extends MultiIOModule {
   })
 
   val toAdapter = IO(new Bundle {
-    val input = Input(UInt(8.W))
-    val valid = Input(Bool())
-    val last = Input(Bool())
+    val input = Output(UInt(8.W))
+    val valid = Output(Bool())
+    val last = Output(Bool())
 
-    val stall = Output(Bool())
+    val stall = Input(Bool())
   })
 
   // TODO: impl: fromAdapter
@@ -46,7 +46,7 @@ class Encoder(PORT_COUNT: Int) extends MultiIOModule {
     val idle, eth, ip, icmp, ipPipe, ipDrop, local, localPipe = Value
   }
 
-  val state = RegInit(State())
+  val state = RegInit(State.idle)
 
   val sending = Reg(new ARPOutput(PORT_COUNT))
   val ipView = sending.packet.ip.asUInt.asTypeOf(Vec(IP.HeaderLength/8, UInt(8.W)))
@@ -60,6 +60,10 @@ class Encoder(PORT_COUNT: Int) extends MultiIOModule {
   io.writer.data.data := 0.asUInt.asTypeOf(io.writer.data.data)
   io.writer.en := false.B
   io.writer.clk := this.clock
+
+  toAdapter.input := DontCare
+  toAdapter.last := DontCare
+  toAdapter.valid := false.B
 
   switch(state) {
     is(State.idle) {
