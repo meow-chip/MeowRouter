@@ -5,6 +5,7 @@ import chisel3.util._
 
 object Consts {
   val IP_BUF = 4096
+  val OPAQUE_BUF = 4096
   val MAX_MTU = 1600
   val LOCAL_MACS = Seq(
     0x000000000000L.U(48.W),

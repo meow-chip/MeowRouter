@@ -16,6 +16,7 @@ class Acceptor(PORT_COUNT: Int) extends Module {
 
     val writer = Flipped(new AsyncWriter(new Packet(PORT_COUNT)))
     val ipWriter = Flipped(new AsyncWriter(new EncoderUnit))
+    val opaqueWriter = Flipped(new AsyncWriter(new EncoderUnit))
   })
 
   val cnt = RegInit(0.asUInt(12.W))
@@ -24,15 +25,23 @@ class Acceptor(PORT_COUNT: Int) extends Module {
 
   val output = Wire(new Packet(PORT_COUNT))
 
-  // TODO: put payload into ring buffer
+  val opaque = RegInit(false.B)
+  val opaqueRecv = Wire(Bool())
+  opaqueRecv := opaque
+
   output.eth.sender := (header.asUInt >> (18 - 12) * 8)
   output.eth.dest := (header.asUInt >> (18 - 6) * 8)
   output.eth.vlan := header(2)
   output.eth.pactype := pactype
 
+  io.opaqueWriter := DontCare
+  io.opaqueWriter.clk := this.clock
+  io.opaqueWriter.en := false.B
+
   when(io.rx.tvalid) {
     when(io.rx.tlast) {
       cnt := 0.U
+      opaque := false.B
     } .otherwise {
       cnt := cnt +% 1.U
     }
@@ -41,6 +50,10 @@ class Acceptor(PORT_COUNT: Int) extends Module {
   when(io.rx.tvalid) {
     when(cnt < HEADER_LEN.U) {
       header(17.U - cnt) := io.rx.tdata
+    }.elsewhen(opaqueRecv) {
+      io.opaqueWriter.en := true.B
+      io.opaqueWriter.data.data := io.rx.tdata
+      io.opaqueWriter.full := io.rx.tlast
     }
   }
 
@@ -53,6 +66,15 @@ class Acceptor(PORT_COUNT: Int) extends Module {
   ipAcceptor.io.payloadWriter <> io.ipWriter
 
   val headerEnd = cnt === HEADER_LEN.U && RegNext(cnt) =/= HEADER_LEN.U
+
+  val isOpaque = pactype =/= PacType.ipv4 && destMatch && headerEnd
+  when(headerEnd && isOpaque && !io.opaqueWriter.progfull) {
+    opaque := true.B
+    opaqueRecv := true.B
+
+    // FIXME: check fifo space
+  }
+
   ipAcceptor.io.start := pactype === PacType.ipv4 && destMatch && headerEnd
 
   val ipEmit = pactype === PacType.ipv4 && ipAcceptor.io.headerFinished && !RegNext(ipAcceptor.io.headerFinished)
@@ -61,11 +83,10 @@ class Acceptor(PORT_COUNT: Int) extends Module {
   output.ip := ipAcceptor.io.ip
   output.icmp := ipAcceptor.io.icmp
 
-  // TODO: support packets other than IP
-  io.writer.en := ipEmit && !ipIgnore
+  io.writer.en := isOpaque || (ipEmit && !ipIgnore)
   io.writer.data := output
   io.writer.full := DontCare
   io.writer.progfull := DontCare
-  // TODO: skip body on drop
+
   io.writer.clk := this.clock
 }
