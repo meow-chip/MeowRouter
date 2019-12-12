@@ -1,15 +1,14 @@
 package data
 
 import chisel3._;
+import chisel3.experimental._;
 import chisel3.util.Enum;
 
-object PacType {
-  val unknown :: ipv4 :: arp :: Nil = Enum(3)
+object PacType extends ChiselEnum {
+  val unknown, ipv4, arp = Value
 
-  def apply() = PacType.unknown.cloneType
-
-  def parse(v: IndexedSeq[UInt]) : UInt = {
-    var result = Wire(PacType.unknown.cloneType)
+  def parse(v: IndexedSeq[UInt]) : PacType.Type = {
+    var result = Wire(PacType())
 
     when((v(1) === 8.U) && (v(0) === 0.U)) {
       result := PacType.ipv4
@@ -22,7 +21,7 @@ object PacType {
     result
   }
 
-  def serialize(v: UInt): UInt = {
+  def serialize(v: PacType.Type): UInt = {
     val result = Wire(UInt())
     when(v === PacType.ipv4) {
       result := 0x0800.U(16.W)

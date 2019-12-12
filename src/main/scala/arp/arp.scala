@@ -23,13 +23,13 @@ class ARPTable(PORT_COUNT: Int, SIZE: Int) extends Module {
 
   val io = IO(new Bundle {
     val input = Input(new ForwardOutput(PORT_COUNT))
-    val status = Input(Status.normal.cloneType)
+    val status = Input(Status())
 
     val stall = Output(Bool())
     val pause = Input(Bool())
 
     val output = Output(new ARPOutput(PORT_COUNT))
-    val outputStatus = Output(Status.normal.cloneType)
+    val outputStatus = Output(Status())
   })
 
   val MACS = VecInit(Consts.LOCAL_MACS)

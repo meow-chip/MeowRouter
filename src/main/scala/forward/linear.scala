@@ -3,6 +3,7 @@ package forward
 import chisel3._
 import chisel3.util._
 import data._
+import _root_.util.Consts
 
 /**
  * LLFT stands for Linear Lookup Forward Table
@@ -34,13 +35,13 @@ class LLFT(PORT_COUNT: Int) extends Module {
 
   val io = IO(new Bundle {
     val input = Input(new Packet(PORT_COUNT))
-    val status = Input(Status.normal.cloneType)
+    val status = Input(Status())
 
     val stall = Output(Bool())
     val pause = Input(Bool())
 
     val output = Output(new ForwardOutput(PORT_COUNT))
-    val outputStatus = Output(Status.normal.cloneType)
+    val outputStatus = Output(Status())
   })
 
   private val store = VecInit(Array(
@@ -74,11 +75,17 @@ class LLFT(PORT_COUNT: Int) extends Module {
         working := io.input
         when(io.status =/= Status.vacant) {
           when(io.input.eth.pactype === PacType.ipv4) {
-            addr := io.input.ip.dest
-            cnt := 0.U
-            shiftCnt := 32.U
-            state := sMATCHING
+            when(io.input.ip.dest === VecInit(Consts.LOCAL_IPS)(io.input.eth.vlan-1.U)) {
+              status := Status.toLocal
+              lookup.status := ForwardLookup.invalid
+            }.otherwise {
+              addr := io.input.ip.dest
+              cnt := 0.U
+              shiftCnt := 32.U
+              state := sMATCHING
+            }
           } .otherwise {
+            status := Status.toLocal
             lookup.status := ForwardLookup.invalid
           }
         }

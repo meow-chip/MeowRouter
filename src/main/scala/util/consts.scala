@@ -21,4 +21,7 @@ object Consts {
     0x0A000301.U(32.W),
     0x0A000401.U(32.W)
   )
+  
+  val CPUBUF_SIZE = 2048
+  val CPUBUF_COUNT = 8
 }
