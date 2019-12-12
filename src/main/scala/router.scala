@@ -17,7 +17,7 @@ import _root_.util.Consts
 /**
  * The router module
  * Pipeline:
- * (Eth & CPU) -> NAT -> Forward Table Lookup -> ARP Cache Lookup -> TCP Checksum -> Encoder -> (Eth)
+ * (Eth & CPU) -> NAT -> Forward Table Lookup -> ARP Cache Lookup -> Encoder -> (Eth)
  *                                                    |
  *                                                    ---> CPU (Forward table miss, ARP cache miss, or dest === localhost)
  * 
