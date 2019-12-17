@@ -1,3 +1,5 @@
+package adapter
+
 import chisel3._
 import chisel3.experimental._
 import chisel3.experimental.ChiselEnum
@@ -15,18 +17,24 @@ class BufPort extends Bundle {
   val we = Output(Bool())
 }
 
+object AdapterReq extends ChiselEnum {
+  val incoming, arpMiss, forwardMiss, unknown = Value
+}
+
 class Adapter extends MultiIOModule {
   val toBuf = IO(new BufPort)
 
-  val fromExec = IO(new Bundle {
+  val fromEnc = IO(new Bundle {
     val input = Input(UInt(8.W))
     val valid = Input(Bool())
     val last = Input(Bool())
 
+    val req = Input(AdapterReq())
+
     val stall = Output(Bool())
   })
 
-  val toExec = IO(new Bundle {
+  val toEnc = IO(new Bundle {
     val writer = Flipped(new AsyncWriter(new EncoderUnit))
   })
 
@@ -38,6 +46,8 @@ class Adapter extends MultiIOModule {
     val idle = Value(0.U)
     val incoming = Value(1.U)
     val outgoing = Value(2.U)
+    val forwardMiss = Value(3.U)
+    val arpMiss = Value(4.U)
   }
 
   toBuf.clk := this.clock
@@ -45,8 +55,10 @@ class Adapter extends MultiIOModule {
   toBuf.we := false.B
   toBuf.din := DontCare
 
-  fromExec.stall := true.B
-  toExec.writer := DontCare
+  fromEnc.stall := true.B
+  toEnc.writer := DontCare
+  toEnc.writer.en := false.B
+  toEnc.writer.clk := this.clock
 
   val state = RegInit(State.rst)
   val nstate = Wire(State())
@@ -89,7 +101,8 @@ class Adapter extends MultiIOModule {
     is(State.pollZero) {
       when(toBuf.dout === Status.outgoing.asUInt()) {
         nstate := State.outgoing
-        raddr := 0.U
+        transferState := TransferState.cntLo
+        raddr := lenOffset
         cnt := 0.U
         sendingSlot := 0.U
       }.otherwise {
@@ -101,10 +114,11 @@ class Adapter extends MultiIOModule {
     is(State.pollHead) {
       when(toBuf.dout === Status.outgoing.asUInt()) {
         nstate := State.outgoing
+        transferState := TransferState.cntLo
         sendingSlot := head
-        raddr := head << bufAddrShift
+        raddr := head ## lenOffset
         cnt := 0.U
-      }.elsewhen(fromExec.valid && !dropping) {
+      }.elsewhen(fromEnc.valid && !dropping) {
         when(step(tail) =/= head) {
           nstate := State.incoming
           transferState := TransferState.payload
@@ -131,14 +145,14 @@ class Adapter extends MultiIOModule {
       switch(transferState) {
         is(TransferState.payload) {
           raddr := tail ## cnt
-          toBuf.din := fromExec.input
-          fromExec.stall := false.B
+          toBuf.din := fromEnc.input
+          fromEnc.stall := false.B
 
-          when(fromExec.valid) {
+          when(fromEnc.valid) {
             toBuf.we := true.B
             cnt := cnt +% 1.U
 
-            when(fromExec.last) {
+            when(fromEnc.last) {
               transferState := TransferState.cntLo
             }
           }
@@ -162,6 +176,12 @@ class Adapter extends MultiIOModule {
           raddr := tail ## statusOffset
           toBuf.we := true.B
           toBuf.din := Status.incoming.asUInt()
+
+          when(fromEnc.req === AdapterReq.arpMiss) {
+            toBuf.din := Status.arpMiss.asUInt()
+          }.elsewhen(fromEnc.req === AdapterReq.forwardMiss) {
+            toBuf.din := Status.forwardMiss.asUInt()
+          }
           transferState := TransferState.fin
         }
 
@@ -174,12 +194,58 @@ class Adapter extends MultiIOModule {
       }
     }
 
-    // TODO: impl outgoing
+    is(State.outgoing) {
+      switch(transferState) {
+        is(TransferState.cntLo) {
+          raddr := sendingSlot ## lenOffset + 1.U
+          transferState := TransferState.cntHi
+          totCnt := toBuf.dout
+        }
+
+        is(TransferState.cntHi) {
+          raddr := sendingSlot ## cnt
+          transferState := TransferState.payload
+          totCnt := toBuf.dout ## totCnt(7, 0)
+        }
+
+        is(TransferState.payload) {
+          val isLast = (cnt +% 1.U) === totCnt
+          toEnc.writer.data.data := toBuf.dout
+          toEnc.writer.data.last := isLast
+          toEnc.writer.en := true.B
+
+          raddr := sendingSlot ## cnt
+
+          when(toEnc.writer.en && !toEnc.writer.full) {
+            cnt := cnt +% 1.U
+            raddr := sendingSlot ## (cnt +% 1.U)
+
+            when(isLast) {
+              transferState := TransferState.status
+            }
+          }
+        }
+
+        is(TransferState.status) {
+          raddr := sendingSlot ## statusOffset
+          toBuf.we := true.B
+          toBuf.din := Status.idle.asUInt()
+          transferState := TransferState.fin
+        }
+
+        is(TransferState.fin) {
+          head := step(head)
+
+          nstate := State.pollZero
+          raddr := statusOffset
+        }
+      }
+    }
   }
 
   when(dropping) {
-    fromExec.stall := false.B
-    when(fromExec.valid && fromExec.last) {
+    fromEnc.stall := false.B
+    when(fromEnc.valid && fromEnc.last) {
       dropping := false.B
     }
   }

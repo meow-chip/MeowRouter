@@ -8,6 +8,8 @@ import _root_.util.AsyncReader
 import arp.ARPOutput
 import _root_.util.Consts
 import chisel3.experimental.ChiselEnum
+import forward.ForwardLookup
+import adapter.AdapterReq
 
 class EncoderUnit extends Bundle {
   val data = UInt(8.W)
@@ -31,10 +33,14 @@ class Encoder(PORT_COUNT: Int) extends MultiIOModule {
     val valid = Output(Bool())
     val last = Output(Bool())
 
+    val req = Output(AdapterReq())
+
     val stall = Input(Bool())
   })
 
-  // TODO: impl: fromAdapter
+  val fromAdapter = IO(new Bundle {
+    val writer = new AsyncWriter(new EncoderUnit)
+  })
 
   val MACS = VecInit(Consts.LOCAL_MACS)
   val IPS = VecInit(Consts.LOCAL_IPS)
@@ -43,7 +49,7 @@ class Encoder(PORT_COUNT: Int) extends MultiIOModule {
   val cnt = RegInit(0.U)
 
   object State extends ChiselEnum {
-    val idle, eth, ip, icmp, ipPipe, ipDrop, local, localPipe = Value
+    val idle, eth, ip, icmp, ipPipe, ipDrop, local, localPipe, localSend = Value
   }
 
   val state = RegInit(State.idle)
@@ -65,16 +71,39 @@ class Encoder(PORT_COUNT: Int) extends MultiIOModule {
   toAdapter.last := DontCare
   toAdapter.valid := false.B
 
+  val localReq = Reg(AdapterReq())
+  toAdapter.req := localReq
+
+  fromAdapter.writer.full := true.B
+  fromAdapter.writer.progfull := true.B
+
   switch(state) {
     is(State.idle) {
-      when(!io.pause && io.status === Status.normal) {
+      when(fromAdapter.writer.en) {
+        state := State.localSend
+      }.elsewhen(
+        !io.pause
+        && io.status === Status.normal
+        && io.input.arp.found
+        && io.input.forward.status === ForwardLookup.forward
+      ) {
         sending := io.input
         state := State.idle
         cnt := 17.U
-      }.elsewhen(!io.pause && io.status === Status.toLocal) {
+      }.elsewhen(!io.pause && (io.status =/= Status.dropped && io.status =/= Status.vacant)) {
         sending := io.input
         state := State.local
         cnt := 17.U
+
+        when(io.status === Status.toLocal) {
+          localReq := AdapterReq.incoming
+        }.elsewhen(io.input.forward.status === ForwardLookup.notFound) {
+          localReq := AdapterReq.forwardMiss
+        }.elsewhen(!io.input.arp.found) {
+          localReq := AdapterReq.arpMiss
+        }.otherwise {
+          localReq := AdapterReq.unknown
+        }
       }
     }
 
@@ -97,14 +126,16 @@ class Encoder(PORT_COUNT: Int) extends MultiIOModule {
     }
 
     is(State.local) {
-      io.writer.data.data := headerView(cnt)
-      io.writer.en := true.B
+      toAdapter.input := headerView(cnt)
+      toAdapter.valid := true.B
+      toAdapter.last := false.B
 
-      when(!io.writer.full) {
+      when(!toAdapter.stall) {
         when(cnt > 0.U) {
           cnt := cnt - 1.U
         }.otherwise {
           state := State.localPipe
+          // TODO: local IP (ARP/FORWARD Miss)
         }
       }
     }
@@ -167,6 +198,16 @@ class Encoder(PORT_COUNT: Int) extends MultiIOModule {
     is(State.ipDrop) {
       io.payloadReader.en := true.B
       when(io.payloadReader.data.last) { state := State.idle }
+    }
+
+    // TODO: ipDrop + localSend
+
+    is(State.localSend) {
+      io.writer <> fromAdapter.writer
+      io.writer.clk := this.clock // Avoid clock mux
+      when(io.writer.en && io.writer.data.last && !io.writer.full) {
+        state := State.idle
+      }
     }
   }
 

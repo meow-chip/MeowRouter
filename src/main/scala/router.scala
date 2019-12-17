@@ -13,6 +13,7 @@ import nat.Nat
 import forward.LLFT
 import arp.ARPTable
 import _root_.util.Consts
+import adapter._
 
 /**
  * The router module
@@ -87,8 +88,8 @@ class Router(PORT_NUM: Int) extends Module {
 
   val adapter = Module(new Adapter)
   adapter.toBuf <> io.buf
-  encoder.toAdapter <> adapter.fromExec
-  adapter.toExec := DontCare
+  encoder.toAdapter <> adapter.fromEnc
+  adapter.toEnc <> encoder.fromAdapter
 
   withClock(io.tx_clk) {
     val transmitter = Module(new Transmitter)
