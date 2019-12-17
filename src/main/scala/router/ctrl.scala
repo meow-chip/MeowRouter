@@ -23,24 +23,28 @@ class StageStall extends Bundle {
  * A command sent by the CPU
  * 
  * Command is applied on the raising edge of op
+ * All fields are given in reversed order comparing to the software repr
+ * because we are using big-endian here.
  */
 class Cmd extends Bundle {
-  val op = Op()
-  val idx = UInt(8.W)
   val data = UInt(48.W)
+  val idx = UInt(8.W)
+  val op = Op()
 
   def fired() = RegNext(op) === Op.nop && op =/= Op.nop
 }
 
 object Op extends ChiselEnum {
-  val nop = Value(0.U(8.W))
-  val setIP = Value(1.U(8.W))
-  val setMAC = Value(2.U(8.W)) // Actually, we don't know if MAC can be altered during runtime
-  val writeNCEntIP = Value(3.U(8.W)) // NCEnt = Neighboor cache entry
-  val writeNCEntMAC = Value(4.U(8.W))
-  val writeNCEntPort = Value(5.U(8.W))
-  val enableNCEnt = Value(6.U(8.W))
-  val disableNCEnt = Value(7.U(8.W))
+  val nop = Value(0.U)
+  val setIP = Value(1.U)
+  val setMAC = Value(2.U) // Actually, we don't know if MAC can be altered during runtime
+  val writeNCEntIP = Value(3.U) // NCEnt = Neighboor cache entry
+  val writeNCEntMAC = Value(4.U)
+  val writeNCEntPort = Value(5.U)
+  val enableNCEnt = Value(6.U)
+  val disableNCEnt = Value(7.U)
+
+  val inval = Value(0xFF.U) // Pad op length to 8
 }
 
 /**
@@ -87,6 +91,9 @@ class Ctrl extends MultiIOModule {
   ips := ipStore
 
   val cmd = IO(Input(new Cmd))
+
+  assert(cmd.getWidth == 64)
+  assert(cmd.op.getWidth == 8)
 
   when(cmd.fired()) {
     switch(cmd.op) {
