@@ -4,8 +4,10 @@ import chisel3.util._
 import forward.ForwardOutput
 import data._
 import _root_.util.Consts
+import _root_.top.Cmd
+import top.Op
 
-class ARPTable(PORT_COUNT: Int, SIZE: Int) extends Module {
+class ARPTable(PORT_COUNT: Int, SIZE: Int) extends MultiIOModule {
   class ARPEntry extends Bundle {
     val ip = UInt(32.W)
 
@@ -32,10 +34,10 @@ class ARPTable(PORT_COUNT: Int, SIZE: Int) extends Module {
     val outputStatus = Output(Status())
   })
 
-  val MACS = VecInit(Consts.LOCAL_MACS)
-  val IPS = VecInit(Consts.LOCAL_IPS)
+  val macs = IO(Input(Vec(PORT_COUNT+1, UInt(48.W))))
+  val ips = IO(Input(Vec(PORT_COUNT+1, UInt(32.W))))
 
-  val storeInit = for(i <- (0 until SIZE)) yield ARPEntry()
+  val storeInit = Seq.fill(SIZE)(ARPEntry())
 
   val store = RegInit(VecInit(storeInit))
   val ptr = RegInit(0.U(log2Ceil(SIZE).W))
@@ -63,10 +65,37 @@ class ARPTable(PORT_COUNT: Int, SIZE: Int) extends Module {
       pipe.arp.mac := entry.mac
       pipe.packet.eth.vlan := entry.at
       pipe.packet.eth.dest := entry.mac
-      pipe.packet.eth.sender := MACS(entry.at)
+      pipe.packet.eth.sender := macs(entry.at)
     }
   }
 
   io.outputStatus := pipeStatus
   io.output := pipe
+
+  // Handling commands
+
+  val cmd = IO(Input(new Cmd))
+  when(cmd.fired()) {
+    switch(cmd.op) {
+      is(Op.writeNCEntIP) {
+        store(cmd.idx).ip := cmd.data
+      }
+
+      is(Op.writeNCEntMAC) {
+        store(cmd.idx).mac := cmd.data
+      }
+
+      is(Op.writeNCEntPort) {
+        store(cmd.idx).at := cmd.data
+      }
+
+      is(Op.disableNCEnt) {
+        store(cmd.idx).valid := false.B
+      }
+
+      is(Op.enableNCEnt) {
+        store(cmd.idx).valid := false.B
+      }
+    }
+  }
 }

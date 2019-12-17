@@ -2,6 +2,7 @@ import scala.util.control.Breaks._
 import chisel3._
 import chisel3.util._
 import chisel3.iotesters.{Driver, TesterOptionsManager, PeekPokeTester}
+import _root_.top.Top
 
 class TopWrap extends Module {
   val io = IO(new Bundle {

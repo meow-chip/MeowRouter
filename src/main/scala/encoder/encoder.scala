@@ -42,9 +42,6 @@ class Encoder(PORT_COUNT: Int) extends MultiIOModule {
     val writer = new AsyncWriter(new EncoderUnit)
   })
 
-  val MACS = VecInit(Consts.LOCAL_MACS)
-  val IPS = VecInit(Consts.LOCAL_IPS)
-
   val writing = RegInit(false.B)
   val cnt = RegInit(0.U)
 

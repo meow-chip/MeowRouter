@@ -1,3 +1,5 @@
+package top
+
 import chisel3._;
 
 import data.AXIS;
@@ -35,6 +37,8 @@ class Router(PORT_NUM: Int) extends Module {
     val tx = new AXIS(8)
 
     val buf = new BufPort
+
+    val cmd = Input(new Cmd)
   })
 
   val acceptorBridge = Module(new AsyncBridge(new Packet(PORT_NUM)))
@@ -46,16 +50,18 @@ class Router(PORT_NUM: Int) extends Module {
 
   val payloadBridge = Module(new AsyncBridge(new EncoderUnit, Consts.PAYLOAD_BUF, Consts.MAX_MTU))
 
+  val ctrl = Module(new Ctrl())
+  acceptorBridge.io.read.en := !ctrl.io.inputWait
+  ctrl.cmd := io.cmd
+
   withClock(io.rx_clk) {
     val acceptor = Module(new Acceptor(PORT_NUM))
 
     acceptor.io.rx <> io.rx
     acceptorBridge.io.write <> acceptor.io.writer
+    acceptor.macs := ctrl.macs
     payloadBridge.io.write <> acceptor.io.payloadWriter
   }
-
-  val ctrl = Module(new Ctrl())
-  acceptorBridge.io.read.en := !ctrl.io.inputWait
 
   val nat = Module(new Nat(PORT_NUM))
   ctrl.io.nat.stall := nat.io.stall
@@ -64,12 +70,16 @@ class Router(PORT_NUM: Int) extends Module {
   nat.io.status := Mux(acceptorBridge.io.read.empty, Status.vacant, Status.normal)
 
   val forward = Module(new LLFT(PORT_NUM))
+  forward.ips := ctrl.ips
   ctrl.io.forward.stall <> forward.io.stall
   ctrl.io.forward.pause <> forward.io.pause
   forward.io.input := nat.io.output
   forward.io.status := nat.io.outputStatus
   
   val arp = Module(new ARPTable(PORT_NUM, 8))
+  arp.ips := ctrl.ips
+  arp.macs := ctrl.macs
+  arp.cmd := io.cmd
   ctrl.io.arp.stall <> arp.io.stall
   ctrl.io.arp.pause <> arp.io.pause
   forward.io.output <> arp.io.input

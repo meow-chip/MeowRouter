@@ -1,3 +1,5 @@
+package top
+
 import chisel3._
 
 class Top extends Module {
@@ -23,6 +25,8 @@ class Top extends Module {
     val buf_din = Output(UInt(8.W))
     val buf_dout = Input(UInt(8.W))
     val buf_we = Output(UInt(1.W))
+
+    val cmd = Input(UInt(64.W))
   })
 
   val router = Module(new Router(4))
@@ -47,4 +51,6 @@ class Top extends Module {
   io.buf_we := router.io.buf.we.asUInt
 
   io.tx_tuser := false.B
+
+  router.io.cmd := io.cmd.asTypeOf(router.io.cmd)
 }

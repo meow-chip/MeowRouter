@@ -11,7 +11,7 @@ import _root_.util.Consts
  * 
  * This impl doesn't support NAT. so io.output.lookup.status is never natInbound or natOutbound
  */
-class LLFT(PORT_COUNT: Int) extends Module {
+class LLFT(PORT_COUNT: Int) extends MultiIOModule {
   private class Entry extends Bundle {
     val prefix = UInt(32.W)
     val len = UInt(log2Ceil(32+1).W)
@@ -44,6 +44,8 @@ class LLFT(PORT_COUNT: Int) extends Module {
     val outputStatus = Output(Status())
   })
 
+  val ips = IO(Input(Vec(PORT_COUNT+1, UInt(32.W))))
+
   private val store = VecInit(Array(
     Entry(List(10, 0, 1, 0), 24, List(10, 0, 1, 2)),
     Entry(List(10, 0, 2, 0), 24, List(10, 0, 2, 2)),
@@ -75,7 +77,7 @@ class LLFT(PORT_COUNT: Int) extends Module {
         working := io.input
         when(io.status =/= Status.vacant) {
           when(io.input.eth.pactype === PacType.ipv4) {
-            when(io.input.ip.dest === VecInit(Consts.LOCAL_IPS)(io.input.eth.vlan-1.U)) {
+            when(io.input.ip.dest === ips(io.input.eth.vlan)) {
               status := Status.toLocal
               lookup.status := ForwardLookup.invalid
             }.otherwise {

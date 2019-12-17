@@ -6,10 +6,11 @@ import chisel3.util.log2Ceil
 import _root_.util._
 import encoder.EncoderUnit
 
-class Acceptor(PORT_COUNT: Int) extends Module {
+class Acceptor(PORT_COUNT: Int) extends MultiIOModule {
   // Header Length = MAC * 2 + VLAN + EtherType
   val HEADER_LEN = 6 * 2 + 4 + 2
-  val MACS = VecInit(Consts.LOCAL_MACS)
+
+  val macs = IO(Input(Vec(PORT_COUNT+1, UInt(48.W))))
 
   val io = IO(new Bundle {
     val rx = Flipped(new AXIS(8))
@@ -56,7 +57,7 @@ class Acceptor(PORT_COUNT: Int) extends Module {
     }
   }
 
-  val destMatch = output.eth.dest === 0xFFFFFFFFFFFFl.U || output.eth.dest === MACS(output.eth.vlan)
+  val destMatch = output.eth.dest === 0xFFFFFFFFFFFFl.U || output.eth.dest === macs(output.eth.vlan)
 
   val headerEnd = cnt === HEADER_LEN.U && RegNext(cnt) =/= HEADER_LEN.U
 
