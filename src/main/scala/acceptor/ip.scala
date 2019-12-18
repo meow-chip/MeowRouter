@@ -11,7 +11,6 @@ class IPAcceptor extends Module {
   val io = IO(new Bundle {
     val rx = Flipped(new AXIS(8))
     val ip = Output(new IP)
-    val icmp = Output(new ICMP)
     val start = Input(Bool())
     val headerFinished = Output(Bool())
     val ignored = Output(Bool())
@@ -20,16 +19,14 @@ class IPAcceptor extends Module {
   })
 
   val IPHeaderByteLen = IP.HeaderLength / 8
-  val ICMPHeaderByteLen = ICMP.HeaderLength / 8
 
   val ipBuf = Reg(Vec(IPHeaderByteLen, UInt(8.W)))
-  val icmpBuf = Reg(Vec(ICMPHeaderByteLen, UInt(8.W)))
 
   val cnt = RegInit(0.U(log2Ceil(2048).W)) // MTU ~= 1500
   val reading = RegInit(false.B)
   val ignored = RegInit(false.B)
 
-  val sIP :: sICMP :: sBody :: Nil = Enum(3)
+  val sIP :: sBody :: Nil = Enum(3)
   val state = RegInit(sIP)
 
   when(io.start) {
@@ -55,25 +52,8 @@ class IPAcceptor extends Module {
           // convert the endianness to little endian
           cnt := cnt +% 1.U
         } .otherwise {
-          when (io.ip.proto === IP.ICMP_PROTO.U) {
-            cnt := 0.U
-            state := sICMP
-          } .otherwise {
-            state := sBody
-          }
-          ignored := io.payloadWriter.progfull || io.ip.len > Consts.MAX_MTU.U
-        }
-      }
-
-      // reading the icmp header
-      is(sICMP) {
-        // filling icmpBuf
-        icmpBuf((ICMPHeaderByteLen-1).U - cnt) := io.rx.tdata
-        // state trainsion
-        when (cnt < (ICMPHeaderByteLen-1).U) {
-          cnt := cnt +% 1.U
-        } .otherwise {
           state := sBody
+          ignored := io.payloadWriter.progfull || io.ip.len > Consts.MAX_MTU.U
         }
       }
 
@@ -94,7 +74,6 @@ class IPAcceptor extends Module {
   }
 
   io.ip := ipBuf.asUInt.asTypeOf(io.ip)
-  io.icmp := icmpBuf.asUInt.asTypeOf(io.icmp)
   io.ignored := ignored
   io.headerFinished := state === sBody
   io.rx.tready := true.B

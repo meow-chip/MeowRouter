@@ -55,15 +55,13 @@ object Op extends ChiselEnum {
 class Ctrl extends MultiIOModule {
   val io = IO(new Bundle {
     val inputWait = Output(Bool()) // controls acceptor.io.read.en
-    val nat = new StageStall
     val forward = new StageStall
     val arp = new StageStall
     val encoder = new StageStall
   });
 
-  val anyStalled = io.nat.stall || io.forward.stall || io.arp.stall || io.encoder.stall
+  val anyStalled = io.forward.stall || io.arp.stall || io.encoder.stall
   io.inputWait := anyStalled
-  io.nat.pause := anyStalled
   io.forward.pause := anyStalled
   io.arp.pause := anyStalled
   io.encoder.pause := anyStalled

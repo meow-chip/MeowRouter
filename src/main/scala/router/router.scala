@@ -11,7 +11,6 @@ import data._
 import ch.qos.logback.core.helpers.Transform
 import _root_.util.AsyncBridge
 import transmitter.Transmitter
-import nat.Nat
 import forward.LLFT
 import arp.ARPTable
 import _root_.util.Consts
@@ -20,13 +19,9 @@ import adapter._
 /**
  * The router module
  * Pipeline:
- * (Eth & CPU) -> NAT -> Forward Table Lookup -> ARP Cache Lookup -> Encoder -> (Eth)
+ * (Eth & CPU) -> Forward Table Lookup -> ARP Cache Lookup -> Encoder -> (Eth)
  *                                                    |
  *                                                    ---> CPU (Forward table miss, ARP cache miss, or dest === localhost)
- * 
- * TCP Checksum stage is intended for NAT packets.
- * Currently we do not support hardward NAT, so all NAT packets are sent to CPU
- *   (Which we also dont have at the moment)
  */
 class Router(PORT_NUM: Int) extends Module {
   val io = IO(new Bundle {
@@ -63,18 +58,12 @@ class Router(PORT_NUM: Int) extends Module {
     payloadBridge.io.write <> acceptor.io.payloadWriter
   }
 
-  val nat = Module(new Nat(PORT_NUM))
-  ctrl.io.nat.stall := nat.io.stall
-  nat.io.pause := ctrl.io.nat.pause
-  nat.io.input := acceptorBridge.io.read.data
-  nat.io.status := Mux(acceptorBridge.io.read.empty, Status.vacant, Status.normal)
-
   val forward = Module(new LLFT(PORT_NUM))
   forward.ips := ctrl.ips
   ctrl.io.forward.stall <> forward.io.stall
   ctrl.io.forward.pause <> forward.io.pause
-  forward.io.input := nat.io.output
-  forward.io.status := nat.io.outputStatus
+  forward.io.input := acceptorBridge.io.read.data
+  forward.io.status := Mux(acceptorBridge.io.read.empty, Status.vacant, Status.normal)
   
   val arp = Module(new ARPTable(PORT_NUM, 8))
   arp.ips := ctrl.ips

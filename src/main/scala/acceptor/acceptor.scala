@@ -75,7 +75,6 @@ class Acceptor(PORT_COUNT: Int) extends MultiIOModule {
   val ipIgnore = pactype === PacType.ipv4 && ipAcceptor.io.ignored
 
   output.ip := ipAcceptor.io.ip
-  output.icmp := ipAcceptor.io.icmp
 
   io.writer.en := isOpaque || (ipEmit && !ipIgnore)
   io.writer.data := output

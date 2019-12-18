@@ -46,14 +46,13 @@ class Encoder(PORT_COUNT: Int) extends MultiIOModule {
   val cnt = RegInit(0.U)
 
   object State extends ChiselEnum {
-    val idle, eth, ip, icmp, ipPipe, ipDrop, local, localPipe, localSend = Value
+    val idle, eth, ip, ipPipe, ipDrop, local, localIp, localPipe, localSend = Value
   }
 
   val state = RegInit(State.idle)
 
   val sending = Reg(new ARPOutput(PORT_COUNT))
   val ipView = sending.packet.ip.asUInt.asTypeOf(Vec(IP.HeaderLength/8, UInt(8.W)))
-  val icmpView = sending.packet.icmp.asUInt.asTypeOf(Vec(ICMP.HeaderLength/8, UInt(8.W)))
   val headerView = sending.packet.eth.asVec
 
   io.payloadReader.clk := this.clock
@@ -130,9 +129,11 @@ class Encoder(PORT_COUNT: Int) extends MultiIOModule {
       when(!toAdapter.stall) {
         when(cnt > 0.U) {
           cnt := cnt - 1.U
+        }.elsewhen(sending.packet.eth.pactype === PacType.ipv4) {
+          state := State.localIp
+          cnt := (IP.HeaderLength/8-1).U
         }.otherwise {
           state := State.localPipe
-          // TODO: local IP (ARP/FORWARD Miss)
         }
       }
     }
@@ -146,26 +147,21 @@ class Encoder(PORT_COUNT: Int) extends MultiIOModule {
         when(cnt > 0.U) {
           cnt := cnt - 1.U
         } .otherwise {
-          when (sending.packet.ip.proto === IP.ICMP_PROTO.U) {
-            cnt := (ICMP.HeaderLength/8-1).U
-            state := State.icmp
-          } .otherwise {
-            state := State.ipPipe
-          }
+          state := State.ipPipe
         }
       }
     }
 
-    is(State.icmp) {
-      io.writer.data.data := icmpView(cnt)
-      io.writer.data.last := false.B
-      io.writer.en := true.B
+    is(State.localIp) {
+      toAdapter.input := ipView(cnt)
+      toAdapter.valid := true.B
+      toAdapter.last := false.B
 
-      when(!io.writer.full) {
+      when(!toAdapter.stall) {
         when(cnt > 0.U) {
           cnt := cnt - 1.U
         } .otherwise {
-          state := State.ipPipe
+          state := State.localPipe
         }
       }
     }

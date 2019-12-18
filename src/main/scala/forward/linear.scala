@@ -77,7 +77,8 @@ class LLFT(PORT_COUNT: Int) extends MultiIOModule {
         working := io.input
         when(io.status =/= Status.vacant) {
           when(io.input.eth.pactype === PacType.ipv4) {
-            when(io.input.ip.dest === ips(io.input.eth.vlan)) {
+            when(io.input.ip.dest === ips(io.input.eth.vlan) || io.input.ip.dest.andR()) {
+              // Broadcast or to self
               status := Status.toLocal
               lookup.status := ForwardLookup.invalid
             }.otherwise {
