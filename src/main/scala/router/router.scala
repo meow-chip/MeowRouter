@@ -59,7 +59,7 @@ class Router(PORT_NUM: Int) extends Module {
 
     acceptor.io.rx <> io.rx
     acceptorBridge.io.write <> acceptor.io.writer
-    acceptor.macs := ctrl.macs
+    acceptor.macs := RegNext(RegNext(ctrl.macs))
     payloadBridge.io.write <> acceptor.io.payloadWriter
   }
 
