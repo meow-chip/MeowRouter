@@ -1,6 +1,8 @@
 #include <assert.h>
 #include <stdio.h>
 #include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
 
 #define ROW_NUM (1024) // ROW_NUM must be the power of 2, and the maximum value is 65536
 #define ROW_NUM_MASK (ROW_NUM - 1)
@@ -81,7 +83,7 @@ boolean lookup(struct Table *t, KEY_TYPE k, VALUE_TYPE *result) {
 // otherwise returns -1.
 int empty_slot(struct Row *r) {
     for (int i = 0; i < SLOT_NUM; i++) {
-        if (r->values[i] == 0) {
+        if (r->valid[i] == 0) {
             return i;
         }
     }
@@ -105,6 +107,7 @@ boolean insert(struct Table *t, KEY_TYPE k, VALUE_TYPE v) {
     int h = hash(k);
     int r1_id = h & ROW_NUM_MASK;
     int r2_id = (h >> 16) & ROW_NUM_MASK;
+    fflush(stdout);
 
     // check if the key is alread in the table. If it is, modify the value.
     VALUE_TYPE tmp_result;
@@ -163,6 +166,7 @@ boolean remove_key(struct Table *t, KEY_TYPE k) {
 
 void test_smoke() {
     struct Table t;
+    memset(&t, 0, sizeof(t));
 
     // insert (42, 1) and (43, 2)
     insert(&t, 42, 1);
@@ -190,8 +194,30 @@ void test_smoke() {
     printf("smoke: Passed\n");
 }
 
+void test_utilization() {
+    float factor = 0.4;
+    int keys[SLOT_NUM*ROW_NUM];
+
+    struct Table t;
+    memset(&t, 0, sizeof(t));
+    for (int i = 0; i < SLOT_NUM * ROW_NUM * factor; i++) {
+        keys[i] = (rand() << 16) ^ rand();
+        assert(insert(&t, keys[i], i));
+    }
+
+    // verify all keys are in the table
+    for (int i = 0; i < SLOT_NUM * ROW_NUM * factor; i++) {
+        VALUE_TYPE v;
+        assert(lookup(&t, keys[i], &v));
+        assert(v == (VALUE_TYPE)i);
+    }
+    
+    printf("utilization: Passed\n");
+}
+
 void test() {
     test_smoke();
+    test_utilization();
 }
 
 int main(int argc, char *argv[]) {
