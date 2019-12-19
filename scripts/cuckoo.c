@@ -29,6 +29,8 @@ Usage:
  - remove_key(&t, key);
     delete key from the table t.
     It returns 1 if the delete is successful, namely, the key was in the table.
+
+Note: The keys cannot be zero, since cuckoo uses zero as the invalid key internally.
 */
 
 #define boolean uint8_t
@@ -36,7 +38,6 @@ Usage:
 struct Row {
     KEY_TYPE keys[SLOT_NUM];
     VALUE_TYPE values[SLOT_NUM];
-    boolean valid[SLOT_NUM]; // boolean value
 };
 
 struct Table {
@@ -54,7 +55,7 @@ uint32_t hash(KEY_TYPE k) {
 // it returns the index of the key if it exists
 int lookup_at_row(struct Row *r, KEY_TYPE k, VALUE_TYPE *result) {
     for (int i = 0; i < SLOT_NUM; i++) {
-        if (r->valid[i] && r->keys[i] == k) {
+        if (r->keys[i] == k) {
             *result = r->values[i];
             return i;
         }
@@ -63,6 +64,7 @@ int lookup_at_row(struct Row *r, KEY_TYPE k, VALUE_TYPE *result) {
 }
 
 boolean lookup(struct Table *t, KEY_TYPE k, VALUE_TYPE *result) {
+    assert(k != 0);
     int h = hash(k);
     int r1_id = h & ROW_NUM_MASK;
     int r2_id = (h >> 16) & ROW_NUM_MASK;
@@ -83,7 +85,7 @@ boolean lookup(struct Table *t, KEY_TYPE k, VALUE_TYPE *result) {
 // otherwise returns -1.
 int empty_slot(struct Row *r) {
     for (int i = 0; i < SLOT_NUM; i++) {
-        if (r->valid[i] == 0) {
+        if (r->keys[i] == 0) {
             return i;
         }
     }
@@ -96,7 +98,6 @@ boolean insert_into_row(struct Row *r, KEY_TYPE k, VALUE_TYPE v) {
     if (slot_id >= 0) {
         r->keys[slot_id] = k;
         r->values[slot_id] = v;
-        r->valid[slot_id] = 1;
         return 1;
     }
     return 0;
@@ -104,6 +105,7 @@ boolean insert_into_row(struct Row *r, KEY_TYPE k, VALUE_TYPE v) {
 
 // insert the (k, v) pair into the table r.
 boolean insert(struct Table *t, KEY_TYPE k, VALUE_TYPE v) {
+    assert(k != 0);
     int h = hash(k);
     int r1_id = h & ROW_NUM_MASK;
     int r2_id = (h >> 16) & ROW_NUM_MASK;
@@ -140,8 +142,8 @@ boolean insert(struct Table *t, KEY_TYPE k, VALUE_TYPE v) {
 
 boolean remove_key_from_row(struct Row *r, KEY_TYPE k) {
     for (int i = 0; i < SLOT_NUM; i++) {
-        if (r->valid[i] && r->keys[i] == k) {
-            r->valid[i] = 0;
+        if (r->keys[i] == k) {
+            r->keys[i] = 0;
             return 1;
         }
     }
@@ -149,6 +151,7 @@ boolean remove_key_from_row(struct Row *r, KEY_TYPE k) {
 }
 
 boolean remove_key(struct Table *t, KEY_TYPE k) {
+    assert(k != 0);
     int h = hash(k);
     int r1_id = h & ROW_NUM_MASK;
     int r2_id = (h >> 16) & ROW_NUM_MASK;
