@@ -6,17 +6,22 @@ import chisel3.util.log2Ceil
 import _root_.util._
 import encoder.EncoderUnit
 
-class Acceptor(PORT_COUNT: Int) extends Module {
+class Acceptor(PORT_COUNT: Int) extends MultiIOModule {
   // Header Length = MAC * 2 + VLAN + EtherType
   val HEADER_LEN = 6 * 2 + 4 + 2
-  val MACS = VecInit(Consts.LOCAL_MACS)
+
+  val macs = IO(Input(Vec(PORT_COUNT+1, UInt(48.W))))
 
   val io = IO(new Bundle {
     val rx = Flipped(new AXIS(8))
 
     val writer = Flipped(new AsyncWriter(new Packet(PORT_COUNT)))
-    val ipWriter = Flipped(new AsyncWriter(new EncoderUnit))
+    val payloadWriter = Flipped(new AsyncWriter(new EncoderUnit))
   })
+
+  val ipAcceptor = Module(new IPAcceptor)
+  ipAcceptor.io.rx <> io.rx
+  ipAcceptor.io.payloadWriter <> io.payloadWriter
 
   val cnt = RegInit(0.asUInt(12.W))
   val header = Reg(Vec(HEADER_LEN, UInt(8.W)))
@@ -24,7 +29,10 @@ class Acceptor(PORT_COUNT: Int) extends Module {
 
   val output = Wire(new Packet(PORT_COUNT))
 
-  // TODO: put payload into ring buffer
+  val opaque = RegInit(false.B)
+  val opaqueRecv = Wire(Bool())
+  opaqueRecv := opaque
+
   output.eth.sender := (header.asUInt >> (18 - 12) * 8)
   output.eth.dest := (header.asUInt >> (18 - 6) * 8)
   output.eth.vlan := header(2)
@@ -33,6 +41,7 @@ class Acceptor(PORT_COUNT: Int) extends Module {
   when(io.rx.tvalid) {
     when(io.rx.tlast) {
       cnt := 0.U
+      opaque := false.B
     } .otherwise {
       cnt := cnt +% 1.U
     }
@@ -41,36 +50,37 @@ class Acceptor(PORT_COUNT: Int) extends Module {
   when(io.rx.tvalid) {
     when(cnt < HEADER_LEN.U) {
       header(17.U - cnt) := io.rx.tdata
+    }.elsewhen(opaqueRecv) {
+      io.payloadWriter.en := true.B
+      io.payloadWriter.data.data := io.rx.tdata
+      io.payloadWriter.data.last := io.rx.tlast
     }
   }
 
-  val destMatch = output.eth.dest === 0xFFFFFFFFFFFFl.U || output.eth.dest === MACS(output.eth.vlan)
-
-  val arpAcceptor = Module(new ARPAcceptor)
-  val ipAcceptor = Module(new IPAcceptor)
-
-  val arpRx :: ipRx :: Nil = io.rx.split(2)
-  arpAcceptor.io.rx <> arpRx
-  ipAcceptor.io.rx <> ipRx
-
-  ipAcceptor.io.payloadWriter <> io.ipWriter
+  val destMatch = output.eth.dest === 0xFFFFFFFFFFFFl.U || output.eth.dest === macs(output.eth.vlan)
 
   val headerEnd = cnt === HEADER_LEN.U && RegNext(cnt) =/= HEADER_LEN.U
-  arpAcceptor.io.start := pactype === PacType.arp && destMatch && headerEnd
+
+  val isOpaque = pactype =/= PacType.ipv4 && destMatch && headerEnd
+  when(headerEnd && isOpaque && !io.payloadWriter.progfull) {
+    opaque := true.B
+    opaqueRecv := true.B
+
+    // FIXME: check fifo space
+  }
+
   ipAcceptor.io.start := pactype === PacType.ipv4 && destMatch && headerEnd
 
-  val arpEmit = pactype === PacType.arp && arpAcceptor.io.finished && !RegNext(arpAcceptor.io.finished)
   val ipEmit = pactype === PacType.ipv4 && ipAcceptor.io.headerFinished && !RegNext(ipAcceptor.io.headerFinished)
   val ipIgnore = pactype === PacType.ipv4 && ipAcceptor.io.ignored
 
-  output.arp := arpAcceptor.io.output
   output.ip := ipAcceptor.io.ip
   output.icmp := ipAcceptor.io.icmp
 
-  io.writer.en := arpEmit || (ipEmit && !ipIgnore)
+  io.writer.en := isOpaque || (ipEmit && !ipIgnore)
   io.writer.data := output
   io.writer.full := DontCare
   io.writer.progfull := DontCare
-  // TODO: skip body on drop
+
   io.writer.clk := this.clock
 }

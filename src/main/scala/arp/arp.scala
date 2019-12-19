@@ -4,8 +4,10 @@ import chisel3.util._
 import forward.ForwardOutput
 import data._
 import _root_.util.Consts
+import _root_.top.Cmd
+import top.Op
 
-class ARPTable(PORT_COUNT: Int, SIZE: Int) extends Module {
+class ARPTable(PORT_COUNT: Int, SIZE: Int) extends MultiIOModule {
   class ARPEntry extends Bundle {
     val ip = UInt(32.W)
 
@@ -23,19 +25,19 @@ class ARPTable(PORT_COUNT: Int, SIZE: Int) extends Module {
 
   val io = IO(new Bundle {
     val input = Input(new ForwardOutput(PORT_COUNT))
-    val status = Input(Status.normal.cloneType)
+    val status = Input(Status())
 
     val stall = Output(Bool())
     val pause = Input(Bool())
 
     val output = Output(new ARPOutput(PORT_COUNT))
-    val outputStatus = Output(Status.normal.cloneType)
+    val outputStatus = Output(Status())
   })
 
-  val MACS = VecInit(Consts.LOCAL_MACS)
-  val IPS = VecInit(Consts.LOCAL_IPS)
+  val macs = IO(Input(Vec(PORT_COUNT+1, UInt(48.W))))
+  val ips = IO(Input(Vec(PORT_COUNT+1, UInt(32.W))))
 
-  val storeInit = for(i <- (0 until SIZE)) yield ARPEntry()
+  val storeInit = Seq.fill(SIZE)(ARPEntry())
 
   val store = RegInit(VecInit(storeInit))
   val ptr = RegInit(0.U(log2Ceil(SIZE).W))
@@ -58,38 +60,42 @@ class ARPTable(PORT_COUNT: Int, SIZE: Int) extends Module {
     pipe.arp := DontCare
 
     when(io.status === Status.normal) {
-      when(io.input.packet.eth.pactype === PacType.arp && io.input.packet.arp.oper === ARP.OperReply) {
-        store(ptr).valid := true.B
-        store(ptr).ip := io.input.packet.arp.spa
-        store(ptr).mac := io.input.packet.arp.sha
-        store(ptr).at := io.input.packet.eth.vlan
-        ptr := ptr + 1.U
-        for(i <- (0 until SIZE)) {
-          when(store(i).ip === io.input.packet.arp.spa && i.U =/= ptr) {
-            store(i).valid := false.B
-          }
-        }
-      }.elsewhen(io.input.packet.eth.pactype === PacType.arp && io.input.packet.arp.oper === ARP.OperRequest) {
-        when(io.input.packet.arp.tpa === IPS(io.input.packet.eth.vlan)) {
-          pipe.packet.eth.dest := io.input.packet.eth.sender
-          pipe.packet.eth.sender := MACS(io.input.packet.eth.vlan)
-          pipe.packet.arp.oper := ARP.OperReply
-          pipe.packet.arp.tha := io.input.packet.arp.sha
-          pipe.packet.arp.tpa := io.input.packet.arp.spa
-          pipe.packet.arp.sha := MACS(io.input.packet.eth.vlan)
-          pipe.packet.arp.spa := IPS(io.input.packet.eth.vlan)
-        }
-      }.otherwise {
-        pipe.arp.found := found
-        pipe.arp.at := entry.at
-        pipe.arp.mac := entry.mac
-        pipe.packet.eth.vlan := entry.at
-        pipe.packet.eth.dest := entry.mac
-        pipe.packet.eth.sender := MACS(entry.at)
-      }
+      pipe.arp.found := found
+      pipe.arp.at := entry.at
+      pipe.arp.mac := entry.mac
+      pipe.packet.eth.vlan := entry.at
+      pipe.packet.eth.dest := entry.mac
+      pipe.packet.eth.sender := macs(entry.at)
     }
   }
 
   io.outputStatus := pipeStatus
   io.output := pipe
+
+  // Handling commands
+
+  val cmd = IO(Input(new Cmd))
+  when(cmd.fired()) {
+    switch(cmd.op) {
+      is(Op.writeNCEntIP) {
+        store(cmd.idx).ip := cmd.data
+      }
+
+      is(Op.writeNCEntMAC) {
+        store(cmd.idx).mac := cmd.data
+      }
+
+      is(Op.writeNCEntPort) {
+        store(cmd.idx).at := cmd.data
+      }
+
+      is(Op.disableNCEnt) {
+        store(cmd.idx).valid := false.B
+      }
+
+      is(Op.enableNCEnt) {
+        store(cmd.idx).valid := false.B
+      }
+    }
+  }
 }

@@ -18,7 +18,7 @@ class AcceptorWrapper(PORT_COUNT: Int) extends Module {
   val c = Module(new Acceptor(PORT_COUNT))
   c.io.rx <> io.rx
   c.io.writer <> DontCare
-  c.io.ipWriter <> DontCare
+  c.io.payloadWriter <> DontCare
   io.valid := c.io.writer.en
   io.packet := c.io.writer.data
 }
@@ -65,10 +65,3 @@ class AcceptorTest(PORT_COUNT: Int, c: AcceptorWrapper) extends PeekPokeTester(c
     assert(packetType.toInt == results(p_id))
   }
 }
-
-object AcceptorTestMain {
-  def main(args: Array[String]): Unit = {
-    if (!Driver(() => new AcceptorWrapper(4))(c => new AcceptorTest(4, c))) System.exit(1)
-  }
-}
-  

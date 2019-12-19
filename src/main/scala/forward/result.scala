@@ -2,10 +2,11 @@ package forward
 
 import chisel3._
 import chisel3.util._
+import chisel3.experimental._
 import data._
 
-object ForwardLookup {
-  val invalid :: notFound :: forward :: natOutbound :: natInbound :: Nil = Enum(5)
+object ForwardLookup extends ChiselEnum {
+  val invalid, notFound, forward, natOutbound, natInbound = Value
 }
 
 /**
@@ -17,7 +18,7 @@ object ForwardLookup {
  * 
  */
 class ForwardLookup extends Bundle {
-  val status = ForwardLookup.notFound.cloneType
+  val status = ForwardLookup()
   val nextHop = UInt(32.W)
 }
 

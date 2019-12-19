@@ -3,6 +3,7 @@ package forward
 import chisel3._
 import chisel3.util._
 import data._
+import _root_.util.Consts
 
 /**
  * LLFT stands for Linear Lookup Forward Table
@@ -10,7 +11,7 @@ import data._
  * 
  * This impl doesn't support NAT. so io.output.lookup.status is never natInbound or natOutbound
  */
-class LLFT(PORT_COUNT: Int) extends Module {
+class LLFT(PORT_COUNT: Int) extends MultiIOModule {
   private class Entry extends Bundle {
     val prefix = UInt(32.W)
     val len = UInt(log2Ceil(32+1).W)
@@ -34,14 +35,16 @@ class LLFT(PORT_COUNT: Int) extends Module {
 
   val io = IO(new Bundle {
     val input = Input(new Packet(PORT_COUNT))
-    val status = Input(Status.normal.cloneType)
+    val status = Input(Status())
 
     val stall = Output(Bool())
     val pause = Input(Bool())
 
     val output = Output(new ForwardOutput(PORT_COUNT))
-    val outputStatus = Output(Status.normal.cloneType)
+    val outputStatus = Output(Status())
   })
+
+  val ips = IO(Input(Vec(PORT_COUNT+1, UInt(32.W))))
 
   private val store = VecInit(Array(
     Entry(List(10, 0, 1, 0), 24, List(10, 0, 1, 2)),
@@ -74,11 +77,17 @@ class LLFT(PORT_COUNT: Int) extends Module {
         working := io.input
         when(io.status =/= Status.vacant) {
           when(io.input.eth.pactype === PacType.ipv4) {
-            addr := io.input.ip.dest
-            cnt := 0.U
-            shiftCnt := 32.U
-            state := sMATCHING
+            when(io.input.ip.dest === ips(io.input.eth.vlan)) {
+              status := Status.toLocal
+              lookup.status := ForwardLookup.invalid
+            }.otherwise {
+              addr := io.input.ip.dest
+              cnt := 0.U
+              shiftCnt := 32.U
+              state := sMATCHING
+            }
           } .otherwise {
+            status := Status.toLocal
             lookup.status := ForwardLookup.invalid
           }
         }

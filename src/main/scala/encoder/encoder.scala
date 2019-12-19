@@ -7,104 +7,104 @@ import _root_.util.AsyncWriter
 import _root_.util.AsyncReader
 import arp.ARPOutput
 import _root_.util.Consts
+import chisel3.experimental.ChiselEnum
+import forward.ForwardLookup
+import adapter.AdapterReq
 
 class EncoderUnit extends Bundle {
   val data = UInt(8.W)
   val last = Bool()
 }
 
-class Encoder(PORT_COUNT: Int) extends Module {
+class Encoder(PORT_COUNT: Int) extends MultiIOModule {
   val io = IO(new Bundle{
     val input = Input(new ARPOutput(PORT_COUNT))
-    val status = Input(UInt())
+    val status = Input(Status())
 
     val stall = Output(Bool())
     val pause = Input(Bool())
 
     val writer = Flipped(new AsyncWriter(new EncoderUnit))
-    val ipReader = Flipped(new AsyncReader(new EncoderUnit))
+    val payloadReader = Flipped(new AsyncReader(new EncoderUnit))
   })
 
-  val MACS = VecInit(Consts.LOCAL_MACS)
-  val IPS = VecInit(Consts.LOCAL_IPS)
+  val toAdapter = IO(new Bundle {
+    val input = Output(UInt(8.W))
+    val valid = Output(Bool())
+    val last = Output(Bool())
+
+    val req = Output(AdapterReq())
+
+    val stall = Input(Bool())
+  })
+
+  val fromAdapter = IO(new Bundle {
+    val writer = new AsyncWriter(new EncoderUnit)
+  })
 
   val writing = RegInit(false.B)
   val cnt = RegInit(0.U)
 
-  val sIDLE :: sETH :: sARP :: sIP :: sICMP :: sIPPIPE :: sARPMISS :: sIPDROP :: Nil = Enum(8)
-  val state = RegInit(sIDLE)
+  object State extends ChiselEnum {
+    val idle, eth, ip, icmp, ipPipe, ipDrop, local, localPipe, localSend = Value
+  }
+
+  val state = RegInit(State.idle)
 
   val sending = Reg(new ARPOutput(PORT_COUNT))
-  val arpView = sending.packet.arp.asUInt.asTypeOf(Vec(28, UInt(8.W)))
   val ipView = sending.packet.ip.asUInt.asTypeOf(Vec(IP.HeaderLength/8, UInt(8.W)))
   val icmpView = sending.packet.icmp.asUInt.asTypeOf(Vec(ICMP.HeaderLength/8, UInt(8.W)))
   val headerView = sending.packet.eth.asVec
 
-  io.ipReader.clk := this.clock
-  io.ipReader.en := false.B
+  io.payloadReader.clk := this.clock
+  io.payloadReader.en := false.B
 
   io.writer.data.last := false.B
   io.writer.data.data := 0.asUInt.asTypeOf(io.writer.data.data)
   io.writer.en := false.B
   io.writer.clk := this.clock
 
-  // For ARPMISS
-  val arpEth = Wire(new Eth(PORT_COUNT+1))
-  arpEth.pactype := PacType.arp
-  arpEth.dest := (-1).S(48.W).asUInt // Broadcast
+  toAdapter.input := DontCare
+  toAdapter.last := DontCare
+  toAdapter.valid := false.B
 
-  val arpReq = Wire(new ARP(48, 32))
-  arpReq.htype := ARP.HtypeEth
-  arpReq.ptype := ARP.PtypeIPV4
-  arpReq.hlen := 6.U
-  arpReq.plen := 4.U
-  arpReq.oper := ARP.OperRequest
-  arpReq.tpa := sending.forward.nextHop
-  arpReq.tha := 0.U
+  val localReq = Reg(AdapterReq())
+  toAdapter.req := localReq
 
-  val port = RegInit(1.U(log2Ceil(PORT_COUNT+1).W))
-  arpEth.vlan := port
-  arpEth.sender := MACS(port)
-  arpReq.sha := MACS(port)
-  arpReq.spa := IPS(port)
-
-  val arpMissPayload = Cat(arpEth.toBits(), arpReq.asUInt()).asTypeOf(Vec(18 + 28, UInt(8.W)))
+  fromAdapter.writer.full := true.B
+  fromAdapter.writer.progfull := true.B
 
   switch(state) {
-    is(sIDLE) {
-      when(!io.pause && io.status === Status.normal) {
+    is(State.idle) {
+      when(fromAdapter.writer.en) {
+        state := State.localSend
+      }.elsewhen(
+        !io.pause
+        && io.status === Status.normal
+        && io.input.arp.found
+        && io.input.forward.status === ForwardLookup.forward
+      ) {
         sending := io.input
-        when(io.input.packet.eth.pactype =/= PacType.arp && !io.input.arp.found) {
-          state := sARPMISS
-          port := 1.U
-          cnt := (18 + 28 -1).U
-        }.elsewhen(io.input.packet.eth.pactype =/= PacType.arp
-          || io.input.packet.eth.sender === MACS(io.input.packet.eth.vlan)
-        ) {
-          state := sETH
-          cnt := 17.U
+        state := State.idle
+        cnt := 17.U
+      }.elsewhen(!io.pause && (io.status =/= Status.dropped && io.status =/= Status.vacant)) {
+        sending := io.input
+        state := State.local
+        cnt := 17.U
+
+        when(io.status === Status.toLocal) {
+          localReq := AdapterReq.incoming
+        }.elsewhen(io.input.forward.status === ForwardLookup.notFound) {
+          localReq := AdapterReq.forwardMiss
+        }.elsewhen(!io.input.arp.found) {
+          localReq := AdapterReq.arpMiss
+        }.otherwise {
+          localReq := AdapterReq.unknown
         }
       }
     }
 
-    is(sARPMISS) {
-      io.writer.data.data := arpMissPayload(cnt)
-      io.writer.data.last := cnt === 0.U
-      io.writer.en := true.B
-
-      when(!io.writer.full) {
-        when(cnt > 0.U) {
-          cnt := cnt - 1.U
-        } .elsewhen(port < PORT_COUNT.U) {
-          cnt := (18 + 28 -1).U
-          port := port + 1.U
-        } .otherwise {
-          state := sIPDROP
-        }
-      }
-    }
-
-    is(sETH) {
+    is(State.eth) {
       // Sending ETH packet
       io.writer.data.data := headerView(cnt)
       io.writer.en := true.B
@@ -112,33 +112,32 @@ class Encoder(PORT_COUNT: Int) extends Module {
       when(!io.writer.full) {
         when(cnt > 0.U) {
           cnt := cnt - 1.U
-        } .elsewhen(sending.packet.eth.pactype === PacType.arp) {
-          // Is ARP
-          state := sARP
-          cnt := 27.U
-        } .otherwise {
+        }.otherwise {
+          // For all packets other than IP, local is asserted
+          assert(sending.packet.eth.pactype === PacType.ipv4)
           // Is IP
-          state := sIP
+          state := State.ip
           cnt := (IP.HeaderLength/8-1).U
         }
       }
     }
 
-    is(sARP) {
-      io.writer.data.data := arpView(cnt)
-      io.writer.data.last := cnt === 0.U
-      io.writer.en := true.B
+    is(State.local) {
+      toAdapter.input := headerView(cnt)
+      toAdapter.valid := true.B
+      toAdapter.last := false.B
 
-      when(!io.writer.full) {
+      when(!toAdapter.stall) {
         when(cnt > 0.U) {
           cnt := cnt - 1.U
-        } .otherwise {
-          state := sIDLE
+        }.otherwise {
+          state := State.localPipe
+          // TODO: local IP (ARP/FORWARD Miss)
         }
       }
     }
 
-    is(sIP) {
+    is(State.ip) {
       io.writer.data.data := ipView(cnt)
       io.writer.data.last := false.B
       io.writer.en := true.B
@@ -149,15 +148,15 @@ class Encoder(PORT_COUNT: Int) extends Module {
         } .otherwise {
           when (sending.packet.ip.proto === IP.ICMP_PROTO.U) {
             cnt := (ICMP.HeaderLength/8-1).U
-            state := sICMP
+            state := State.icmp
           } .otherwise {
-            state := sIPPIPE
+            state := State.ipPipe
           }
         }
       }
     }
 
-    is(sICMP) {
+    is(State.icmp) {
       io.writer.data.data := icmpView(cnt)
       io.writer.data.last := false.B
       io.writer.en := true.B
@@ -166,27 +165,48 @@ class Encoder(PORT_COUNT: Int) extends Module {
         when(cnt > 0.U) {
           cnt := cnt - 1.U
         } .otherwise {
-          state := sIPPIPE
+          state := State.ipPipe
         }
       }
     }
 
-    is(sIPPIPE) {
-      io.writer.data := io.ipReader.data
-      val transfer = (!io.ipReader.empty) && (!io.writer.full)
+    is(State.ipPipe) {
+      io.writer.data := io.payloadReader.data
+      val transfer = (!io.payloadReader.empty) && (!io.writer.full)
       io.writer.en := transfer
-      io.ipReader.en := transfer
+      io.payloadReader.en := transfer
 
-      when(io.ipReader.data.last && transfer) {
-        state := sIDLE
+      when(io.payloadReader.data.last && transfer) {
+        state := State.idle
       }
     }
 
-    is(sIPDROP) {
-      io.ipReader.en := true.B
-      when(io.ipReader.data.last) { state := sIDLE }
+    is(State.localPipe) {
+      toAdapter.input := io.payloadReader.data.data
+      toAdapter.valid := !io.payloadReader.empty
+      toAdapter.last := io.payloadReader.data.last
+      io.payloadReader.en := !io.payloadReader.empty && !toAdapter.stall
+
+      when(io.payloadReader.data.last && io.payloadReader.en) {
+        state := State.idle
+      }
+    }
+
+    is(State.ipDrop) {
+      io.payloadReader.en := true.B
+      when(io.payloadReader.data.last) { state := State.idle }
+    }
+
+    // TODO: ipDrop + localSend
+
+    is(State.localSend) {
+      io.writer <> fromAdapter.writer
+      io.writer.clk := this.clock // Avoid clock mux
+      when(io.writer.en && io.writer.data.last && !io.writer.full) {
+        state := State.idle
+      }
     }
   }
 
-  io.stall := state =/= sIDLE
+  io.stall := state =/= State.idle
 }

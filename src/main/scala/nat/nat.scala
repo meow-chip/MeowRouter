@@ -7,10 +7,10 @@ import data.{Packet, Status, PacType, IP}
 class Nat(val PORT_COUNT: Int) extends Module {
   val io = IO(new Bundle {
     val input = Input(new Packet(PORT_COUNT))
-    val status = Input(Status.normal.cloneType)
+    val status = Input(Status())
 
     val output = Output(new Packet(PORT_COUNT))
-    val outputStatus = Output(Status.normal.cloneType)
+    val outputStatus = Output(Status())
 
     val pause = Input(Bool())
     val stall = Output(Bool())

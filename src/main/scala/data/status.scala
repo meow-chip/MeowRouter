@@ -1,6 +1,7 @@
 package data
 
 import chisel3.util.Enum
+import chisel3.experimental.ChiselEnum
 
 /**
  * Pipeline status
@@ -9,6 +10,6 @@ import chisel3.util.Enum
  *   behavior based on pactype and Forward Table/ARP lookup result
  * dropped: This is a dropped packet. Encoder should empty related IP content FIFO if needed
  */
-object Status {
-  val vacant :: normal :: dropped :: Nil = Enum(3)
+object Status extends ChiselEnum {
+  val vacant, normal, toLocal, dropped = Value
 }

@@ -1,3 +1,5 @@
+package top
+
 import chisel3._;
 
 import data.AXIS;
@@ -13,11 +15,12 @@ import nat.Nat
 import forward.LLFT
 import arp.ARPTable
 import _root_.util.Consts
+import adapter._
 
 /**
  * The router module
  * Pipeline:
- * (Eth & CPU) -> NAT -> Forward Table Lookup -> ARP Cache Lookup -> TCP Checksum -> Encoder -> (Eth)
+ * (Eth & CPU) -> NAT -> Forward Table Lookup -> ARP Cache Lookup -> Encoder -> (Eth)
  *                                                    |
  *                                                    ---> CPU (Forward table miss, ARP cache miss, or dest === localhost)
  * 
@@ -32,6 +35,10 @@ class Router(PORT_NUM: Int) extends Module {
 
     val rx = Flipped(new AXIS(8))
     val tx = new AXIS(8)
+
+    val buf = new BufPort
+
+    val cmd = Input(new Cmd)
   })
 
   val acceptorBridge = Module(new AsyncBridge(new Packet(PORT_NUM)))
@@ -41,18 +48,20 @@ class Router(PORT_NUM: Int) extends Module {
   transmitterBridge.io.write.clk := this.clock
   transmitterBridge.io.write.progfull := DontCare
 
-  val ipBridge = Module(new AsyncBridge(new EncoderUnit, Consts.IP_BUF, Consts.MAX_MTU))
+  val payloadBridge = Module(new AsyncBridge(new EncoderUnit, Consts.PAYLOAD_BUF, Consts.MAX_MTU))
+
+  val ctrl = Module(new Ctrl())
+  acceptorBridge.io.read.en := !ctrl.io.inputWait
+  ctrl.cmd := io.cmd
 
   withClock(io.rx_clk) {
     val acceptor = Module(new Acceptor(PORT_NUM))
 
     acceptor.io.rx <> io.rx
     acceptorBridge.io.write <> acceptor.io.writer
-    ipBridge.io.write <> acceptor.io.ipWriter
+    acceptor.macs := RegNext(RegNext(ctrl.macs))
+    payloadBridge.io.write <> acceptor.io.payloadWriter
   }
-
-  val ctrl = Module(new Ctrl())
-  acceptorBridge.io.read.en := !ctrl.io.inputWait
 
   val nat = Module(new Nat(PORT_NUM))
   ctrl.io.nat.stall := nat.io.stall
@@ -61,12 +70,16 @@ class Router(PORT_NUM: Int) extends Module {
   nat.io.status := Mux(acceptorBridge.io.read.empty, Status.vacant, Status.normal)
 
   val forward = Module(new LLFT(PORT_NUM))
+  forward.ips := ctrl.ips
   ctrl.io.forward.stall <> forward.io.stall
   ctrl.io.forward.pause <> forward.io.pause
   forward.io.input := nat.io.output
   forward.io.status := nat.io.outputStatus
   
   val arp = Module(new ARPTable(PORT_NUM, 8))
+  arp.ips := ctrl.ips
+  arp.macs := ctrl.macs
+  arp.cmd := io.cmd
   ctrl.io.arp.stall <> arp.io.stall
   ctrl.io.arp.pause <> arp.io.pause
   forward.io.output <> arp.io.input
@@ -81,7 +94,12 @@ class Router(PORT_NUM: Int) extends Module {
   encoder.io.input := arp.io.output
   encoder.io.status := arp.io.outputStatus
   encoder.io.writer <> transmitterBridge.io.write
-  encoder.io.ipReader <> ipBridge.io.read
+  encoder.io.payloadReader <> payloadBridge.io.read
+
+  val adapter = Module(new Adapter)
+  adapter.toBuf <> io.buf
+  encoder.toAdapter <> adapter.fromEnc
+  adapter.toEnc <> encoder.fromAdapter
 
   withClock(io.tx_clk) {
     val transmitter = Module(new Transmitter)

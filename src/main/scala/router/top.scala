@@ -1,3 +1,5 @@
+package top
+
 import chisel3._
 
 class Top extends Module {
@@ -17,6 +19,14 @@ class Top extends Module {
     val tx_tlast = Output(Bool())
     val tx_tready = Input(Bool())
     val tx_tuser = Output(Bool())
+
+    val buf_clk = Output(Clock())
+    val buf_addr = Output(UInt(32.W))
+    val buf_din = Output(UInt(8.W))
+    val buf_dout = Input(UInt(8.W))
+    val buf_we = Output(UInt(1.W))
+
+    val cmd = Input(UInt(64.W))
   })
 
   val router = Module(new Router(4))
@@ -34,5 +44,13 @@ class Top extends Module {
   io.tx_tvalid := router.io.tx.tvalid;
   router.io.tx.tready := io.tx_tready
 
+  io.buf_addr := router.io.buf.addr
+  io.buf_clk := router.io.buf.clk
+  io.buf_din := router.io.buf.din
+  router.io.buf.dout := io.buf_dout
+  io.buf_we := router.io.buf.we.asUInt
+
   io.tx_tuser := false.B
+
+  router.io.cmd := io.cmd.asTypeOf(router.io.cmd)
 }
