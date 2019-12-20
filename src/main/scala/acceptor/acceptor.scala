@@ -54,6 +54,10 @@ class Acceptor(PORT_COUNT: Int) extends MultiIOModule {
   output.ip := ip.asTypeOf(output.ip)
   val destMatch = output.eth.dest === 0xFFFFFFFFFFFFl.U || output.eth.dest === macs(output.eth.vlan)
 
+  io.payloadWriter.clk := this.clock
+  io.payloadWriter.data := DontCare
+  io.payloadWriter.en := false.B
+
   switch(state) {
     is(State.eth) {
       header(17.U - cnt) := io.rx.tdata
