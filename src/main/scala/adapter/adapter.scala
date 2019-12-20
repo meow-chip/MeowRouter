@@ -39,7 +39,7 @@ class Adapter extends MultiIOModule {
   })
 
   object State extends ChiselEnum {
-    val rst, pollHead, pollZero, incoming, outgoing = Value
+    val rst, rstWait, pollHead, pollZero, incoming, outgoing = Value
   }
 
   object Status extends ChiselEnum {
@@ -92,10 +92,27 @@ class Adapter extends MultiIOModule {
   raddr := DontCare
   toBuf.addr := raddr
 
+  val rstCnt = RegInit(0.U(log2Ceil(Consts.CPUBUF_COUNT).W))
+
   switch(state) {
     is(State.rst) {
-      nstate := State.pollZero
+      head := 1.U
+      tail := 1.U
+
+      toBuf.addr := rstCnt ## statusOffset
+      toBuf.din := 0.U
+      toBuf.we := true.B
+
+      rstCnt := rstCnt + 1.U
+
+      when(rstCnt === (Consts.CPUBUF_COUNT-1).U) {
+        nstate := State.rstWait
+      }
+    }
+
+    is(State.rstWait) {
       raddr := statusOffset
+      nstate := State.pollZero
     }
 
     is(State.pollZero) {
