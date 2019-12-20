@@ -94,7 +94,7 @@ class ARPTable(PORT_COUNT: Int, SIZE: Int) extends MultiIOModule {
       }
 
       is(Op.enableNCEnt) {
-        store(cmd.idx).valid := false.B
+        store(cmd.idx).valid := true.B
       }
     }
   }

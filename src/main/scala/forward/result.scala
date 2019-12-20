@@ -6,7 +6,7 @@ import chisel3.experimental._
 import data._
 
 object ForwardLookup extends ChiselEnum {
-  val invalid, notFound, forward, natOutbound, natInbound = Value
+  val invalid, notFound, forward = Value
 }
 
 /**
