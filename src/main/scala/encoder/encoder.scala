@@ -84,7 +84,7 @@ class Encoder(PORT_COUNT: Int) extends MultiIOModule {
         && io.input.forward.status === ForwardLookup.forward
       ) {
         sending := io.input
-        state := State.idle
+        state := State.eth
         cnt := 17.U
       }.elsewhen(!io.pause && (io.status =/= Status.dropped && io.status =/= Status.vacant)) {
         sending := io.input
