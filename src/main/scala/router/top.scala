@@ -1,6 +1,7 @@
 package top
 
 import chisel3._
+import data._
 
 class Top extends Module {
   val io = IO(new Bundle {
@@ -27,6 +28,8 @@ class Top extends Module {
     val buf_we = Output(UInt(1.W))
 
     val cmd = Input(UInt(64.W))
+
+    val axi = new AXI(64)
   })
 
   val router = Module(new Router(4))
@@ -53,4 +56,6 @@ class Top extends Module {
   io.tx_tuser := false.B
 
   router.io.cmd := io.cmd.asTypeOf(router.io.cmd)
+
+  router.io.axi <> io.axi
 }

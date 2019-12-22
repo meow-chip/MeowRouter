@@ -44,8 +44,8 @@ class CuckooFT(PORT_COUNT: Int) extends MultiIOModule {
   io.stall := state =/= State.idle
 
   class CuckooRow extends Bundle {
-    val keys = Vec(4, UInt(32.W))
     val values = Vec(4, UInt(32.W))
+    val keys = Vec(4, UInt(32.W))
   }
 
   val lines = Reg(Vec(2, Vec(4, UInt(64.W))))
@@ -68,7 +68,17 @@ class CuckooFT(PORT_COUNT: Int) extends MultiIOModule {
         status := io.status
         working := io.input
 
-        when(io.input.ip.dest === ips(io.input.eth.vlan)) {
+        when(io.status =/= Status.normal) {
+          state := State.idle
+        }.elsewhen(io.input.eth.pactype =/= PacType.ipv4) {
+          state := State.idle
+          status := Status.toLocal
+        }.elsewhen(
+          io.input.ip.dest === ips(io.input.eth.vlan)
+          || io.input.ip.dest.andR()
+          || io.input.ip.dest(31, 24) === 224.U
+        ) {
+          state := State.idle
           status := Status.toLocal
           // lookup doesn't matter now
         }.otherwise {
@@ -84,7 +94,7 @@ class CuckooFT(PORT_COUNT: Int) extends MultiIOModule {
     is(State.waiting) {
       assume(new CuckooRow().getWidth == 64 * 4)
       // AR
-      io.axi.ARADDR := Consts.CUCKOO_ADDR_BASE.U + hashes(sending)
+      io.axi.ARADDR := Consts.CUCKOO_ADDR_BASE.U + hashes(sending) * Consts.CUCKOO_LINE_WIDTH.U
       io.axi.ARBURST := AXI.Constants.Burst.INCR.U
       io.axi.ARCACHE := 0.U
       io.axi.ARID := sending
@@ -97,7 +107,7 @@ class CuckooFT(PORT_COUNT: Int) extends MultiIOModule {
 
       assert(sending <= 2.U)
 
-      when(io.axi.ARREADY) {
+      when(io.axi.ARREADY && io.axi.ARVALID) {
         sending := sending + 1.U
       }
 
@@ -127,6 +137,8 @@ class CuckooFT(PORT_COUNT: Int) extends MultiIOModule {
 
         lookup.status := Mux(hit, ForwardLookup.forward, ForwardLookup.notFound)
         lookup.nextHop := value
+
+        state := State.idle
       }
     }
   }

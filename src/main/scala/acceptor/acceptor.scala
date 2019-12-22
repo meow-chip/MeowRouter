@@ -52,7 +52,11 @@ class Acceptor(PORT_COUNT: Int) extends MultiIOModule {
   output.eth.vlan := header(2)
   output.eth.pactype := pactype
   output.ip := ip.asTypeOf(output.ip)
-  val destMatch = output.eth.dest === 0xFFFFFFFFFFFFl.U || output.eth.dest === macs(output.eth.vlan)
+  val destMatch = (
+    output.eth.dest === 0xFFFFFFFFFFFFl.U // Broadcast
+    || output.eth.dest === macs(output.eth.vlan) // Unicast
+    || output.eth.dest(47, 24) === 0x01005E.U // Multicast
+  )
 
   io.payloadWriter.clk := this.clock
   io.payloadWriter.data := DontCare

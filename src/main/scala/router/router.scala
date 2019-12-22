@@ -2,7 +2,6 @@ package top
 
 import chisel3._;
 
-import data.AXIS;
 import acceptor.Acceptor
 import encoder.Encoder
 import encoder.EncoderUnit
@@ -11,7 +10,7 @@ import data._
 import ch.qos.logback.core.helpers.Transform
 import _root_.util.AsyncBridge
 import transmitter.Transmitter
-import forward.LLFT
+import forward._
 import arp.ARPTable
 import _root_.util.Consts
 import adapter._
@@ -34,6 +33,8 @@ class Router(PORT_NUM: Int) extends Module {
     val buf = new BufPort
 
     val cmd = Input(new Cmd)
+
+    val axi = new AXI(64)
   })
 
   val acceptorBridge = Module(new AsyncBridge(new Packet(PORT_NUM)))
@@ -58,12 +59,13 @@ class Router(PORT_NUM: Int) extends Module {
     payloadBridge.io.write <> acceptor.io.payloadWriter
   }
 
-  val forward = Module(new LLFT(PORT_NUM))
+  val forward = Module(new CuckooFT(PORT_NUM))
   forward.ips := ctrl.ips
   ctrl.io.forward.stall <> forward.io.stall
   ctrl.io.forward.pause <> forward.io.pause
   forward.io.input := acceptorBridge.io.read.data
   forward.io.status := Mux(acceptorBridge.io.read.empty, Status.vacant, Status.normal)
+  forward.io.axi <> io.axi
   
   val arp = Module(new ARPTable(PORT_NUM, 8))
   arp.ips := ctrl.ips
